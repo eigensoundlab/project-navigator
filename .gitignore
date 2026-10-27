@@ -1,0 +1,6 @@
+# Asset Store flavor produced by Tools~/make-store-build.sh
+AssetStoreBuild/
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp

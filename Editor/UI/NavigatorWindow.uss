@@ -1,0 +1,50 @@
+/* Copyright 2026 Daniel Sandner. SPDX-License-Identifier: Apache-2.0 */
+
+/* Project Navigator window. Layout essentials are also set inline in C#, so the window
+   works without this sheet; this file adds hover feedback and polish. */
+
+.pn-root {
+    flex-grow: 1;
+}
+
+.pn-current {
+    opacity: 0.75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pn-fold > .unity-foldout__content {
+    margin-left: 0;
+}
+
+.pn-row {
+    border-radius: 3px;
+}
+
+.pn-row:hover {
+    background-color: var(--unity-colors-highlight-background-hover);
+}
+
+.pn-row:active {
+    background-color: var(--unity-colors-highlight-background);
+}
+
+.pn-swatch {
+    border-radius: 2px;
+}
+
+.pn-chip {
+    border-radius: 6px;
+    background-color: var(--unity-colors-button-background);
+    border-width: 1px;
+    border-color: var(--unity-colors-button-border);
+}
+
+.pn-tagheader {
+    opacity: 0.9;
+}
+
+.pn-empty {
+    -unity-font-style: italic;
+}

@@ -1,0 +1,24 @@
+{
+  "name": "com.eigensoundlab.project-navigator",
+  "version": "0.3.2",
+  "displayName": "Project Navigator",
+  "description": "Pinned, frequent and recent folders and files, folder colors and notes, back/forward navigation, a floating panel and a quick-jump search for the Unity Project window.",
+  "unity": "6000.6",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Daniel Sandner",
+    "url": "https://eigensound.com/"
+  },
+  "keywords": [
+    "editor",
+    "project window",
+    "navigation",
+    "folders",
+    "history",
+    "bookmarks",
+    "colors"
+  ],
+  "documentationUrl": "https://github.com/eigensoundlab/project-navigator#readme",
+  "changelogUrl": "https://github.com/eigensoundlab/project-navigator/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/eigensoundlab/project-navigator/blob/main/LICENSE"
+}
