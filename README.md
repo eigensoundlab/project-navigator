@@ -8,6 +8,9 @@ Requires **Unity 6.6 (6000.6) or newer**. License: Apache-2.0.
 Author: Daniel Sandner — [eigensound.com](https://eigensound.com/) (sound design and research).
 Repository: [github.com/eigensoundlab/project-navigator](https://github.com/eigensoundlab/project-navigator).
 
+<img width="600" height="300" alt="project-navigator-unity-screenshot" src="https://github.com/user-attachments/assets/db1897a6-ea44-4848-8819-f23be1451fa6" />
+
+
 ## Install
 
 Pick one:
