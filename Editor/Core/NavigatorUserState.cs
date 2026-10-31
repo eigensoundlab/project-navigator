@@ -42,6 +42,9 @@ namespace ProjectNavigator
         public List<AssetPin> pins = new List<AssetPin>();
         public List<AssetColor> folderColors = new List<AssetColor>();   // name kept for file compatibility; holds files too
         public List<AssetNote> notes = new List<AssetNote>();
+        public List<ScenePin> scenePins = new List<ScenePin>();
+        public List<AssetColor> sceneColors = new List<AssetColor>();
+        public List<AssetNote> sceneNotes = new List<AssetNote>();
         public HistoryStack history = new HistoryStack();                 // folders only (back/forward)
         public List<FrecencyEntry> frecency = new List<FrecencyEntry>();  // folders
         public List<FrecencyEntry> fileFrecency = new List<FrecencyEntry>();
@@ -62,6 +65,7 @@ namespace ProjectNavigator
         public bool showNotesInProjectWindow = true;
         public bool inspectorStripEnabled = true;
         public bool inspectorStripForFiles = false;
+        public bool inspectorStripForGameObjects = true;
 
         /// <summary>When true, colors and notes set from menus / the inspector go to the team-shared settings.</summary>
         public bool colorScopeShared = true;

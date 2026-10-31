@@ -29,6 +29,10 @@ namespace ProjectNavigator
         public List<AssetNote> notes = new List<AssetNote>();
         /// <summary>Team-shared tool pins (a project's own editor tools); personal ones live in the global file.</summary>
         public List<ToolPin> toolPins = new List<ToolPin>();
+        // Scene objects (keys are GlobalObjectId strings; the AssetColor/AssetNote "guid" field holds that id).
+        public List<ScenePin> scenePins = new List<ScenePin>();
+        public List<AssetColor> sceneColors = new List<AssetColor>();
+        public List<AssetNote> sceneNotes = new List<AssetNote>();
         public bool rulesEnabled = false;
 
         /// <summary>Stable ids for the built-in tags, so static context-menu entries can reference them.</summary>
@@ -108,6 +112,9 @@ namespace ProjectNavigator
             folderColors.Clear();
             pins.Clear();
             notes.Clear();
+            scenePins.Clear();
+            sceneColors.Clear();
+            sceneNotes.Clear();
             CreateDefaults();
         }
 

@@ -185,3 +185,20 @@ returns immediately when no window is marked and nothing is decorated.
 
 Hierarchy decision: the Scene section will target the new Hierarchy window only (default since 6.6);
 no IMGUI path for the legacy window.
+
+## Scene section (v0.5)
+
+- Identity: `GlobalObjectId.GetGlobalObjectIdSlow(go).ToString()`; refused for assets, prefab-stage contents
+  (`PrefabStageUtility.GetCurrentPrefabStage().IsPartOfPrefabContents`), `identifierType != 2`, `targetObjectId == 0`
+  (runtime objects) and empty scene GUIDs (unsaved scenes).
+- `SceneNavigator` resolves all pinned/colored/noted ids in one `GlobalObjectIdentifiersToObjectsSlow` call
+  and caches objects by id and by instance id (`GetHashCode()`), invalidated by `hierarchyChanged`,
+  scene open/close and play-mode changes (`Stamp`). `StyleFor(go)` = explicit marks + color inherited from
+  the nearest ancestor whose tag has "inherit"; explicit "none" blocks inheritance.
+- Hierarchy column: `HierarchyGutterColumn` registers `[HierarchyViewColumnDescriptor]` + `[HierarchyViewCellDescriptor(k_ColumnId, typeof(HierarchyGameObjectHandler))]`
+  (namespaces `Unity.Hierarchy`, `Unity.Hierarchy.Editor`); `BindCell` builds a stripe + dot once per cell and
+  updates them per bind; `cell.IsDefaultValue = !style.Visible`. Guarded by `UNITY_6000_5_OR_NEWER` and
+  `PROJECT_NAVIGATOR_NO_HIERARCHY_COLUMN`. After marks change, `EditorApplication.RepaintHierarchyWindow()`
+  is called; whether the window rebinds cells immediately is to be confirmed.
+- GameObject menu items run once per selected object in Unity; `SceneContextMenus.First(command)` keeps
+  each action to one run over the whole selection.

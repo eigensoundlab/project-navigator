@@ -9,6 +9,7 @@ namespace ProjectNavigator
     internal static class NavigatorSections
     {
         public const string Pinned = "pinned";
+        public const string Scene = "scene";
         public const string Frequent = "frequent";
         public const string Recent = "recent";
         public const string RecentFiles = "recentFiles";
@@ -16,13 +17,14 @@ namespace ProjectNavigator
         public const string Tools = "tools";
         public const string Windows = "windows";
 
-        public static readonly string[] All = { Pinned, Frequent, Recent, RecentFiles, Colored, Tools, Windows };
+        public static readonly string[] All = { Pinned, Scene, Frequent, Recent, RecentFiles, Colored, Tools, Windows };
 
         public static string Title(string id)
         {
             switch (id)
             {
                 case Pinned: return "Pinned";
+                case Scene: return "Scene";
                 case Frequent: return "Frequent";
                 case Recent: return "Recent";
                 case RecentFiles: return "Recent files";
@@ -56,12 +58,22 @@ namespace ProjectNavigator
             return s;
         }
 
-        /// <summary>Adds missing sections with defaults, drops unknown ids, keeps the stored order.</summary>
+        /// <summary>Adds missing sections with defaults (next to their default neighbours), drops unknown ids, keeps the stored order.</summary>
         public static void EnsureDefaults(List<SectionSetting> list)
         {
             list.RemoveAll(s => s == null || System.Array.IndexOf(All, s.id) < 0);
-            foreach (var id in All)
-                if (!list.Exists(s => s.id == id)) list.Add(Default(id));
+            for (int i = 0; i < All.Length; i++)
+            {
+                var id = All[i];
+                if (list.Exists(s => s.id == id)) continue;
+                int insertAt = list.Count;
+                if (i > 0)
+                {
+                    int previous = list.FindIndex(s => s.id == All[i - 1]);
+                    if (previous >= 0) insertAt = previous + 1;
+                }
+                list.Insert(insertAt, Default(id));
+            }
         }
 
         public static bool IsVisible(SectionSetting s, bool floating, bool compact)

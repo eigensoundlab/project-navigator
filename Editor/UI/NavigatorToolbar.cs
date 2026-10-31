@@ -67,6 +67,17 @@ namespace ProjectNavigator
                 }
             }
 
+            foreach (var (scenePin, scenePinShared) in SceneNavigator.AllPins())
+            {
+                var info = SceneNavigator.GetInfo(scenePin.id, scenePin.lastName);
+                var label = string.IsNullOrEmpty(scenePin.label) ? info.name : scenePin.label;
+                var id = scenePin.id;
+                bool loaded = info.Exists;
+                menu.AddItem(new GUIContent("Scene/" + Sanitize(info.sceneName) + "/" + Sanitize(label) + (loaded ? "" : "  (scene not loaded)") + (scenePinShared ? "  (team)" : "")),
+                    false, () => { if (loaded) SceneNavigator.Select(id); else SceneNavigator.OpenSceneAndSelect(id, false); });
+                any = true;
+            }
+
             foreach (var (pin, shared) in NavigatorTools.AllToolPins())
             {
                 var tool = pin;

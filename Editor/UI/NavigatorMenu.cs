@@ -17,6 +17,9 @@ namespace ProjectNavigator
         [MenuItem("Window/Project Navigator/Pin a Tool...", false, 15)]
         static void PinTool() => ToolPickerWindow.Open();
 
+        [MenuItem("Window/Project Navigator/Pin Selected GameObjects", false, 16)]
+        static void PinSelectedGameObjects() => SceneNavigator.PinSelection(false);
+
         [MenuItem("Window/Project Navigator/Quick Jump (Search)", false, 13)]
         static void QuickJump() => NavigatorSearchProvider.ShowQuickJump();
 

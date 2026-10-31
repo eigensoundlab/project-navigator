@@ -44,6 +44,9 @@ namespace ProjectNavigator
         [Shortcut("Project Navigator/Pin a Tool...")]
         static void PinTool() => ToolPickerWindow.Open();
 
+        [Shortcut("Project Navigator/Pin Selected GameObjects", KeyCode.G, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        static void PinSelectedGameObjects() => SceneNavigator.PinSelection(false);
+
         [Shortcut("Project Navigator/Pin Current Folder", KeyCode.P, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
         static void PinCurrent() => Navigator.PinCurrentFolder(false);
 

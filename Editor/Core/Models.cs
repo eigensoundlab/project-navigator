@@ -49,6 +49,18 @@ namespace ProjectNavigator
         public string group = "";
     }
 
+    /// <summary>A pinned scene object, identified by its GlobalObjectId string (scene GUID + local file id).</summary>
+    [Serializable]
+    internal sealed class ScenePin
+    {
+        public string id = "";
+        public string label = "";
+        public string group = "";
+        public string sceneGuid = "";
+        /// <summary>Last known object name, shown while its scene is not loaded.</summary>
+        public string lastName = "";
+    }
+
     /// <summary>A short free-text note attached to a folder or file (shown next to its path).</summary>
     [Serializable]
     internal sealed class AssetNote

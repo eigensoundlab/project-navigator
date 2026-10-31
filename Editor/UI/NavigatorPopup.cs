@@ -29,7 +29,8 @@ namespace ProjectNavigator
             Asset,
             Tool,
             Window,
-            RecentWindow
+            RecentWindow,
+            SceneObject
         }
 
         sealed class Entry
@@ -51,6 +52,9 @@ namespace ProjectNavigator
             public ToolPin tool;
             public EditorWindow window;
             public RecentWindow recent;
+            // scene object
+            public string sceneId;
+            public bool sceneLoaded;
         }
 
         const float k_Width = 400f;
@@ -169,6 +173,26 @@ namespace ProjectNavigator
                 var entry = MakeAsset(info, "Pinned" + (shared ? " (team)" : ""));
                 if (!string.IsNullOrEmpty(pin.label)) entry.label = pin.label;
                 m_All.Add(entry);
+            }
+            foreach (var (scenePin, sceneShared) in SceneNavigator.AllPins())
+            {
+                var info = SceneNavigator.GetInfo(scenePin.id, scenePin.lastName);
+                var go = info.gameObject;
+                var style = go != null ? SceneNavigator.StyleFor(go) : SceneStyle.None;
+                m_All.Add(new Entry
+                {
+                    kind = EntryKind.SceneObject,
+                    sceneId = scenePin.id,
+                    sceneLoaded = info.Exists,
+                    label = string.IsNullOrEmpty(scenePin.label) ? info.name : scenePin.label,
+                    detail = info.Exists ? info.sceneName + (string.IsNullOrEmpty(info.hierarchyPath) ? "" : " · " + info.hierarchyPath) : info.sceneName + " · not loaded",
+                    note = SceneNavigator.GetNote(scenePin.id),
+                    section = "Scene" + (sceneShared ? " (team)" : ""),
+                    pinned = true,
+                    hasColor = style.hasColor,
+                    color = style.color,
+                    icon = go != null ? EditorGUIUtility.ObjectContent(go, typeof(GameObject)).image : EditorGUIUtility.FindTexture("GameObject Icon")
+                });
             }
             foreach (var (pin, shared) in NavigatorTools.AllToolPins())
                 m_All.Add(MakeTool(pin, "Tools" + (shared ? " (team)" : "")));
@@ -449,6 +473,9 @@ namespace ProjectNavigator
                     var type = NavigatorTools.ResolveType(entry.recent.windowType);
                     if (type != null) NavigatorTools.PinWindowType(type, false);
                     break;
+                case EntryKind.SceneObject:
+                    SceneNavigator.Unpin(entry.sceneId);
+                    break;
             }
             Collect();
             Repaint();
@@ -462,7 +489,7 @@ namespace ProjectNavigator
             else if (rowTop + k_RowHeight > m_Scroll.y + viewHeight) m_Scroll.y = rowTop + k_RowHeight - viewHeight;
         }
 
-        /// <summary>Enter / click. Folders open in the Project window, files are selected (Shift+Enter opens the asset), tools launch, windows get focus.</summary>
+        /// <summary>Enter / click. Folders open in the Project window, files are selected (Shift+Enter opens the asset), scene objects are selected (Shift+Enter frames), tools launch, windows get focus.</summary>
         void Activate(Entry entry, bool alternate)
         {
             Close();
@@ -484,6 +511,15 @@ namespace ProjectNavigator
                         var type = NavigatorTools.ResolveType(entry.recent.windowType);
                         if (type != null) NavigatorTools.FocusOrOpen(type);
                         else Debug.LogWarning($"[Project Navigator] Window type not found: {entry.recent.windowType}");
+                        break;
+                    case EntryKind.SceneObject:
+                        if (!entry.sceneLoaded)
+                        {
+                            if (EditorUtility.DisplayDialog("Project Navigator", "The object's scene is not loaded. Open it?", "Open scene", "Cancel"))
+                                SceneNavigator.OpenSceneAndSelect(entry.sceneId, false);
+                        }
+                        else if (alternate) SceneNavigator.Frame(entry.sceneId);
+                        else SceneNavigator.Select(entry.sceneId);
                         break;
                 }
             };

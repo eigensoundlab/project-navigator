@@ -1,8 +1,9 @@
 # Project Navigator
 
-Fast movement through a Unity project: pinned, frequent and recent folders and files, folder
-colors and notes, back/forward navigation, pinned editor tools and windows with a window switcher,
-a popup at the cursor and a quick-jump search. Editor-only, nothing is written into `Assets/` or
+Fast movement through a Unity project: pinned, frequent and recent folders and files, pinned scene
+objects, colors and notes for folders, files and GameObjects (with a gutter column in the Hierarchy),
+back/forward navigation, pinned editor tools and windows with a window switcher, a popup at the
+cursor and a quick-jump search. Editor-only, nothing is written into `Assets/` or
 `.meta` files.
 
 Requires **Unity 6.6 (6000.6) or newer**. License: Apache-2.0.
@@ -47,6 +48,7 @@ The tool starts working immediately: it records the folders you browse even whil
 | Section | Contents |
 | --- | --- |
 | **Pinned** | Your bookmarks. Right-click a row for *Pin label*, *Pin group*, *Move up/down*. Team pins show a `team` chip. |
+| **Scene** | Pinned GameObjects, grouped by scene. Click selects, double-click frames the object in the Scene view; objects in a scene that is not loaded offer to open it. |
 | **Frequent** | Folders you use most, ranked by recent frequency. Promote one with *Pin*. |
 | **Recent** | Folders you browsed, newest first. Survives editor restarts. |
 | **Recent files** | Files you selected (off by default: Preferences → *Track selected files*). |
@@ -79,6 +81,21 @@ position with your pinned, frequent and recent entries. Type to filter by name, 
 `Shift+Enter` opens a file), `Ctrl+P` to pin or unpin the highlighted entry, `Esc` or clicking
 anywhere else closes it. Since the panel only exists while it has focus, it is never hidden behind
 other windows: the reliable alternative to an "always on top" panel.
+
+## Scene objects
+
+- **Pin** a GameObject: right-click it in the Hierarchy → *Project Navigator → Pin* (or *Pin (Team)*),
+  or `Alt+Shift+G` for the selection. Pins are keyed by Unity's `GlobalObjectId` (scene + object id),
+  so they survive scene reloads, editor restarts and Play mode, and they follow renames and reparenting.
+- **Color** and **note** GameObjects from the same menu, from a Scene row, or from the strip under the
+  Inspector header. Colors are the same tags as for folders; a tag with *Inherit* colors the children too,
+  *None* blocks inheritance below an object.
+- The **Nav** column in the Hierarchy window shows a color stripe, a pin dot and the note as tooltip.
+  Right-click the Hierarchy header to hide or move the column. (New Hierarchy window only, the default
+  since Unity 6.6.)
+- Limits: objects inside an open prefab stage and objects created at runtime have no stable id and
+  can't be pinned; save a new scene before pinning in it. Pins in team scope go into
+  `ProjectSettings/ProjectNavigator.json` like everything else shared.
 
 ## Tools and windows
 
@@ -119,6 +136,7 @@ All rebindable in Edit → Shortcuts, group "Project Navigator".
 | Alt+Shift+Space | Popup at cursor |
 | Alt+Shift+W | Window switcher |
 | Alt+Shift+K | Pin the last focused window |
+| Alt+Shift+G | Pin the selected GameObjects |
 | Alt+Shift+F | Quick jump (search) |
 | Alt+Shift+P | Pin / unpin the current folder |
 | Alt+1 … Alt+9 | Open pin 1–9 |
@@ -168,8 +186,8 @@ which adds exact "which folder is being browsed" tracking. Delete that file (or 
 
 ## Roadmap
 
-Scene section (pins, colors and notes for GameObjects, with a gutter column in the new Hierarchy
-window; the legacy Hierarchy window is not supported), then a property watch board for the Inspector.
+A property watch board for the Inspector (pin individual fields, edit them from one place), and
+pins inside prefab stages.
 
 ## Troubleshooting
 

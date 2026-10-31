@@ -66,7 +66,10 @@ namespace ProjectNavigator
             user.showNotesInProjectWindow = EditorGUILayout.Toggle("Show notes in Project window list rows", user.showNotesInProjectWindow);
             user.inspectorStripEnabled = EditorGUILayout.Toggle("Show color/pin/note strip in the folder Inspector", user.inspectorStripEnabled);
             using (new EditorGUI.DisabledScope(!user.inspectorStripEnabled))
+            {
                 user.inspectorStripForFiles = EditorGUILayout.Toggle("Also show the strip for files", user.inspectorStripForFiles);
+                user.inspectorStripForGameObjects = EditorGUILayout.Toggle("Show the strip for scene GameObjects", user.inspectorStripForGameObjects);
+            }
             user.colorScopeShared = EditorGUILayout.Toggle("New colors and notes are team-shared (ProjectSettings)", user.colorScopeShared);
 
             EditorGUILayout.Space();
@@ -93,7 +96,10 @@ namespace ProjectNavigator
                     EditorUtility.DisplayDialog("Project Navigator", "Clear the folder/file history and frequency data?", "Clear", "Cancel"))
                     Navigator.ClearHistory();
                 if (GUILayout.Button("Remove missing entries", GUILayout.Width(160f)))
+                {
                     Navigator.PruneMissing();
+                    SceneNavigator.PruneMissing();
+                }
                 if (GUILayout.Button("Save now", GUILayout.Width(90f)))
                     Navigator.FlushSaves();
                 if (GUILayout.Button("Open floating window", GUILayout.Width(150f)))
@@ -351,6 +357,28 @@ namespace ProjectNavigator
                 }
             }
 
+            // ---- shared scene pins
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Pinned scene objects (team)", EditorStyles.boldLabel);
+            if (shared.scenePins.Count == 0)
+                EditorGUILayout.LabelField("None yet. Right-click a GameObject → Project Navigator → Pin (Team).", EditorStyles.miniLabel);
+            for (int i = 0; i < shared.scenePins.Count; i++)
+            {
+                var pin = shared.scenePins[i];
+                var info = SceneNavigator.GetInfo(pin.id, pin.lastName);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    pin.label = EditorGUILayout.TextField(pin.label, GUILayout.Width(120f));
+                    pin.group = EditorGUILayout.TextField(pin.group, GUILayout.Width(90f));
+                    EditorGUILayout.LabelField(info.sceneName + " / " + (info.Exists ? (string.IsNullOrEmpty(info.hierarchyPath) ? "" : info.hierarchyPath + "/") + info.name : pin.lastName + (info.sceneLoaded ? "  (missing)" : "  (scene not loaded)")));
+                    if (GUILayout.Button("X", GUILayout.Width(22f)))
+                    {
+                        var target = pin;
+                        s_Deferred = () => shared.scenePins.Remove(target);
+                    }
+                }
+            }
+
             // ---- shared notes
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Notes (team)", EditorStyles.boldLabel);
@@ -391,7 +419,7 @@ namespace ProjectNavigator
                 if (GUILayout.Button("Export JSON...", GUILayout.Width(110f))) Export(shared);
                 if (GUILayout.Button("Import JSON...", GUILayout.Width(110f))) Import(shared);
                 if (GUILayout.Button("Remove missing", GUILayout.Width(110f)))
-                    Debug.Log($"[Project Navigator] Removed {Navigator.PruneMissingShared()} entries that pointed to missing assets.");
+                    Debug.Log($"[Project Navigator] Removed {Navigator.PruneMissingShared() + SceneNavigator.PruneMissingShared()} entries that pointed to missing assets or scene objects.");
                 if (GUILayout.Button("Reset to defaults", GUILayout.Width(120f)) &&
                     EditorUtility.DisplayDialog("Project Navigator", "Reset tags, rules, team pins, team colors and team notes to the defaults?", "Reset", "Cancel"))
                 {
@@ -409,6 +437,7 @@ namespace ProjectNavigator
         {
             Navigator.MarkDirty(user: user, shared: shared);
             FolderColorResolver.Invalidate();
+            SceneNavigator.Invalidate();
             Navigator.NotifyChanged();
         }
 
@@ -436,6 +465,8 @@ namespace ProjectNavigator
             shared.tags.RemoveAll(t => t.id == tagId);
             shared.folderColors.RemoveAll(f => f.tagId == tagId);
             NavigatorUserState.instance.folderColors.RemoveAll(f => f.tagId == tagId);
+            shared.sceneColors.RemoveAll(f => f.tagId == tagId);
+            NavigatorUserState.instance.sceneColors.RemoveAll(f => f.tagId == tagId);
             foreach (var rule in shared.rules)
                 if (rule.tagId == tagId) rule.tagId = "";
             Navigator.MarkDirty(user: true);

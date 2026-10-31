@@ -33,7 +33,8 @@ namespace ProjectNavigator
             Color,
             Tool,
             Window,
-            RecentWindow
+            RecentWindow,
+            SceneObject
         }
 
         sealed class Row
@@ -59,6 +60,9 @@ namespace ProjectNavigator
             public ToolPin tool;
             public EditorWindow window;
             public RecentWindow recent;
+            // scene rows
+            public string sceneId;
+            public SceneObjectInfo scene;
         }
 
         const string k_PreferencesPath = "Preferences/Project Navigator";
@@ -225,6 +229,7 @@ namespace ProjectNavigator
         Vector2 m_DragStart;
         double m_NextWindowsRefresh;
         string m_WindowsSignature;
+        int m_SceneStamp = -1;
 
         bool Compact
         {
@@ -307,17 +312,22 @@ namespace ProjectNavigator
             if (m_Scroll != null) Refresh();
         }
 
-        /// <summary>The Windows section mirrors live editor state (focus, open/closed); it refreshes only when that state changed.</summary>
+        /// <summary>Live sections (Windows, Scene) refresh on a 1 s timer, and only when their underlying state changed.</summary>
         void PeriodicRefresh()
         {
-            if (m_Scroll == null || !Visible(NavigatorSections.Windows)) return;
+            if (m_Scroll == null) return;
             double now = EditorApplication.timeSinceStartup;
             if (now < m_NextWindowsRefresh) return;
             m_NextWindowsRefresh = now + 1.0;
-            var open = NavigatorTools.OpenWindows();
-            var signature = NavigatorTools.WindowsSignature(open);
-            if (signature == m_WindowsSignature) return;
-            FillWindows(open, signature);
+
+            if (Visible(NavigatorSections.Windows))
+            {
+                var open = NavigatorTools.OpenWindows();
+                var signature = NavigatorTools.WindowsSignature(open);
+                if (signature != m_WindowsSignature) FillWindows(open, signature);
+            }
+            if (Visible(NavigatorSections.Scene) && SceneNavigator.Stamp != m_SceneStamp)
+                FillScene();
         }
 
         public void CreateGUI()
@@ -648,6 +658,8 @@ namespace ProjectNavigator
 
             if (Visible(NavigatorSections.Pinned))
                 FillSection(NavigatorSections.Pinned, BuildPinRows(), "Drop folders or files here, or right-click an asset → Project Navigator → Pin.");
+            if (Visible(NavigatorSections.Scene))
+                FillScene();
             if (Visible(NavigatorSections.Frequent))
                 FillSection(NavigatorSections.Frequent, BuildFrequentRows(user.frequentCount), "Folders you use most will show up here.");
             if (Visible(NavigatorSections.Recent))
@@ -824,9 +836,13 @@ namespace ProjectNavigator
             element.style.paddingLeft = 4;
             element.style.paddingRight = 6;
             element.userData = row;
-            element.tooltip = row.path != null
-                ? (row.exists ? (string.IsNullOrEmpty(row.note) ? row.path : row.path + "\n" + row.note) : "Missing asset (GUID " + row.guid + ")")
-                : row.detail;
+            if (row.kind == RowKind.SceneObject)
+                element.tooltip = (row.exists ? row.scene.sceneName + "/" + (string.IsNullOrEmpty(row.scene.hierarchyPath) ? "" : row.scene.hierarchyPath + "/") + row.scene.name : row.scene.sceneName + " (scene not loaded)")
+                    + (string.IsNullOrEmpty(row.note) ? "" : "\n" + row.note);
+            else
+                element.tooltip = row.path != null
+                    ? (row.exists ? (string.IsNullOrEmpty(row.note) ? row.path : row.path + "\n" + row.note) : "Missing asset (GUID " + row.guid + ")")
+                    : row.detail;
             if (!row.exists) element.style.opacity = 0.45f;
 
             var swatch = new VisualElement();
@@ -886,11 +902,34 @@ namespace ProjectNavigator
 
             element.RegisterCallback<ClickEvent>(evt =>
             {
-                if (evt.button != 0 || !row.exists) return;
+                if (evt.button != 0) return;
+                if (!row.exists && row.kind != RowKind.SceneObject) return;
                 Activate(row, evt.clickCount >= 2);
             });
 
             element.AddManipulator(new ContextualMenuManipulator(evt => BuildRowMenu(evt.menu, row)));
+
+            if (row.kind == RowKind.SceneObject && row.exists)
+            {
+                element.RegisterCallback<PointerDownEvent>(evt =>
+                {
+                    if (evt.button != 0) return;
+                    m_DragRow = row;
+                    m_DragStart = evt.position;
+                });
+                element.RegisterCallback<PointerMoveEvent>(evt =>
+                {
+                    if (m_DragRow != row || (evt.pressedButtons & 1) == 0) return;
+                    if (Vector2.Distance((Vector2)evt.position, m_DragStart) < k_DragThreshold) return;
+                    m_DragRow = null;
+                    var go = row.scene.gameObject;
+                    if (go == null) return;
+                    DragAndDrop.PrepareStartDrag();
+                    DragAndDrop.objectReferences = new UnityEngine.Object[] { go };
+                    DragAndDrop.StartDrag(go.name);
+                });
+                element.RegisterCallback<PointerUpEvent>(evt => m_DragRow = null);
+            }
 
             if (row.path != null)
             {
@@ -937,6 +976,16 @@ namespace ProjectNavigator
         {
             switch (row.kind)
             {
+                case RowKind.SceneObject:
+                    if (!row.exists)
+                    {
+                        if (!string.IsNullOrEmpty(row.scene.scenePath) && doubleClick &&
+                            EditorUtility.DisplayDialog("Project Navigator", $"Open scene \"{row.scene.sceneName}\" to show this object?", "Open scene", "Cancel"))
+                            SceneNavigator.OpenSceneAndSelect(row.sceneId, false);
+                    }
+                    else if (doubleClick) SceneNavigator.Frame(row.sceneId);
+                    else SceneNavigator.Select(row.sceneId);
+                    break;
                 case RowKind.Tool:
                     NavigatorTools.Launch(row.tool);
                     break;
@@ -1018,6 +1067,7 @@ namespace ProjectNavigator
         {
             switch (row.kind)
             {
+                case RowKind.SceneObject: BuildSceneMenu(menu, row); return;
                 case RowKind.Tool: BuildToolMenu(menu, row); return;
                 case RowKind.Window: BuildWindowMenu(menu, row); return;
                 case RowKind.RecentWindow:
@@ -1111,6 +1161,55 @@ namespace ProjectNavigator
             }
         }
 
+        void BuildSceneMenu(DropdownMenu menu, Row row)
+        {
+            var shared = NavigatorSharedSettings.instance;
+            var user = NavigatorUserState.instance;
+            var id = row.sceneId;
+            var pin = SceneNavigator.FindPin(id, out _);
+
+            if (row.exists)
+            {
+                menu.AppendAction("Select", _ => SceneNavigator.Select(id));
+                menu.AppendAction("Frame in Scene view", _ => SceneNavigator.Frame(id));
+                menu.AppendAction("Copy hierarchy path", _ => EditorGUIUtility.systemCopyBuffer = (string.IsNullOrEmpty(row.scene.hierarchyPath) ? "" : row.scene.hierarchyPath + "/") + row.scene.name);
+            }
+            else if (!string.IsNullOrEmpty(row.scene.scenePath))
+            {
+                menu.AppendAction("Open scene and select", _ => SceneNavigator.OpenSceneAndSelect(id, false));
+                menu.AppendAction("Open scene additively and select", _ => SceneNavigator.OpenSceneAndSelect(id, true));
+            }
+            menu.AppendSeparator();
+
+            if (pin != null)
+            {
+                menu.AppendAction("Pin label... (display only)", _ => TextPromptWindow.Prompt("Pin label", "Label", pin.label, v => SceneNavigator.SetPinLabel(id, v)));
+                menu.AppendAction("Pin group...", _ => TextPromptWindow.Prompt("Pin group", "Group", pin.group, v => SceneNavigator.SetPinGroup(id, v)));
+                menu.AppendAction("Move up", _ => SceneNavigator.MovePin(id, -1));
+                menu.AppendAction("Move down", _ => SceneNavigator.MovePin(id, 1));
+                menu.AppendSeparator();
+            }
+
+            menu.AppendAction("Note...", _ => TextPromptWindow.Prompt("Note", "Note", row.note, v => SceneNavigator.SetNote(id, v, user.colorScopeShared)));
+            if (!string.IsNullOrEmpty(row.note))
+                menu.AppendAction("Clear note", _ => SceneNavigator.ClearNote(id));
+
+            var explicitColor = SceneNavigator.FindExplicitColor(id, out _);
+            foreach (var tag in shared.tags)
+            {
+                var tagId = tag.id;
+                bool isCurrent = explicitColor != null && explicitColor.tagId == tagId;
+                menu.AppendAction("Color/" + tag.name, _ => SceneNavigator.SetColor(id, tagId, user.colorScopeShared),
+                    isCurrent ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+            }
+            menu.AppendAction("Color/None (block inheritance)", _ => SceneNavigator.SetColor(id, "", user.colorScopeShared),
+                explicitColor != null && string.IsNullOrEmpty(explicitColor.tagId) ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+            menu.AppendAction("Color/Clear", _ => SceneNavigator.ClearColor(id));
+
+            menu.AppendSeparator();
+            menu.AppendAction("Unpin", _ => SceneNavigator.Unpin(id));
+        }
+
         void BuildToolMenu(DropdownMenu menu, Row row)
         {
             var pin = row.tool;
@@ -1191,6 +1290,52 @@ namespace ProjectNavigator
             foldout.Add(manage);
 
             foldout.text = $"Colored ({shown})";
+        }
+
+        void FillScene()
+        {
+            m_SceneStamp = SceneNavigator.Stamp;
+            var foldout = m_Sections[NavigatorSections.Scene];
+            foldout.Clear();
+            int shown = 0;
+
+            var rows = SceneNavigator.AllPins().Select(t => MakeSceneRow(t.pin, t.shared)).Where(PassesFilter).ToList();
+            foreach (var group in rows.GroupBy(r => r.scene.scenePath).OrderByDescending(g => g.First().scene.sceneLoaded).ThenBy(g => g.First().scene.sceneName, StringComparer.OrdinalIgnoreCase))
+            {
+                var first = group.First().scene;
+                foldout.Add(MakeGroupHeader(first.sceneName + (first.sceneLoaded ? "" : "  (not loaded)"), null));
+                foreach (var row in group)
+                {
+                    foldout.Add(MakeRow(row));
+                    shown++;
+                }
+            }
+
+            if (shown == 0) foldout.Add(MakeEmpty("Right-click a GameObject in the Hierarchy → Project Navigator → Pin (Alt+Shift+G pins the selection)."));
+            foldout.text = $"Scene ({shown})";
+        }
+
+        static Row MakeSceneRow(ScenePin pin, bool shared)
+        {
+            var info = SceneNavigator.GetInfo(pin.id, pin.lastName);
+            var style = info.Exists ? SceneNavigator.StyleFor(info.gameObject) : SceneStyle.None;
+            return new Row
+            {
+                kind = RowKind.SceneObject,
+                sceneId = pin.id,
+                scene = info,
+                label = string.IsNullOrEmpty(pin.label) ? info.name : pin.label,
+                name = info.name,
+                detail = info.Exists ? info.hierarchyPath : info.sceneName,
+                group = pin.group,
+                note = SceneNavigator.GetNote(pin.id),
+                exists = info.Exists,
+                shared = shared,
+                pinned = true,
+                hasColor = style.hasColor,
+                color = style.color,
+                icon = info.Exists ? EditorGUIUtility.ObjectContent(info.gameObject, typeof(GameObject)).image : EditorGUIUtility.FindTexture("GameObject Icon")
+            };
         }
 
         void FillTools()

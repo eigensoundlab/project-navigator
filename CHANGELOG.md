@@ -3,6 +3,21 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - 2026-10-31
+### Added
+- Scene section: pin GameObjects (Hierarchy right-click → Project Navigator → Pin, or Alt+Shift+G),
+  grouped by scene; click selects, double-click frames in the Scene view; pins in scenes that are not
+  loaded offer to open the scene. Pins use GlobalObjectId, so they survive scene reloads, editor restarts
+  and Play mode. Personal or team scope, labels, groups.
+- Colors (tags, with inheritance to children) and notes for GameObjects, from the Hierarchy context
+  menu, the Scene rows and the Inspector header strip.
+- Gutter column "Nav" in the new Hierarchy window: color stripe, pin dot, note as tooltip. Hide or
+  move it from the Hierarchy header's right-click menu; `PROJECT_NAVIGATOR_NO_HIERARCHY_COLUMN` compiles it out.
+- Scene pins in the popup (Enter selects, Shift+Enter frames) and the main-toolbar dropdown.
+### Notes
+- The legacy Hierarchy window gets no column; pins still work there.
+- Objects inside an open prefab stage and runtime-created objects cannot be pinned (no stable id).
+
 ## [0.4.2] - 2026-10-31
 ### Added
 - A colored tool pin now colors the windows it opens (Windows section, window switcher, tab dot and

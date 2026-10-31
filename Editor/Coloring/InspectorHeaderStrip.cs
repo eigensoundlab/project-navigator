@@ -26,6 +26,73 @@ namespace ProjectNavigator
             Editor.finishedDefaultHeaderGUI += OnHeaderGUI;
         }
 
+        static void DrawSceneObjectStrip(GameObject gameObject, NavigatorUserState user)
+        {
+            if (!SceneNavigator.TryGetId(gameObject, out var id, out _)) return; // runtime objects, prefab contents, unsaved scenes
+            var shared = NavigatorSharedSettings.instance;
+
+            var options = new string[shared.tags.Count + 2];
+            options[0] = "Color: inherit";
+            options[1] = "Color: none";
+            for (int i = 0; i < shared.tags.Count; i++)
+                options[i + 2] = shared.tags[i].name;
+
+            int current = 0;
+            var explicitColor = SceneNavigator.FindExplicitColor(id, out _);
+            if (explicitColor != null)
+            {
+                if (string.IsNullOrEmpty(explicitColor.tagId)) current = 1;
+                else
+                {
+                    int index = shared.tags.FindIndex(t => t.id == explicitColor.tagId);
+                    current = index >= 0 ? index + 2 : 0;
+                }
+            }
+
+            var style = SceneNavigator.StyleFor(gameObject);
+            var note = SceneNavigator.GetNote(id);
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                var swatch = GUILayoutUtility.GetRect(12f, 12f, GUILayout.Width(12f), GUILayout.Height(12f));
+                swatch.y += 3f;
+                EditorGUI.DrawRect(swatch, style.hasColor ? style.color : new Color(0.5f, 0.5f, 0.5f, 0.25f));
+
+                int next = EditorGUILayout.Popup(current, options, GUILayout.MaxWidth(160f));
+                if (next != current)
+                {
+                    if (next == 0) SceneNavigator.ClearColor(id);
+                    else SceneNavigator.SetColor(id, next == 1 ? "" : shared.tags[next - 2].id, user.colorScopeShared);
+                }
+
+                bool pinned = SceneNavigator.IsPinned(id);
+                if (GUILayout.Button(pinned ? k_PinOn : k_PinOff, EditorStyles.miniButton, GUILayout.Width(54f)))
+                {
+                    if (pinned) SceneNavigator.Unpin(id);
+                    else SceneNavigator.Pin(gameObject, false, out _);
+                }
+
+                if (GUILayout.Button(new GUIContent("Frame", "Frame in the Scene view"), EditorStyles.miniButton, GUILayout.Width(50f)))
+                {
+                    var targetId = id;
+                    EditorApplication.delayCall += () => SceneNavigator.Frame(targetId);
+                }
+
+                if (GUILayout.Button(k_Note, EditorStyles.miniButton, GUILayout.Width(44f)))
+                {
+                    var targetId = id;
+                    bool toShared = user.colorScopeShared;
+                    TextPromptWindow.Prompt("Note", "Note", note, value => SceneNavigator.SetNote(targetId, value, toShared));
+                }
+
+                if (!string.IsNullOrEmpty(note))
+                    GUILayout.Label(new GUIContent(note, note), EditorStyles.miniLabel, GUILayout.MinWidth(20f));
+
+                GUILayout.FlexibleSpace();
+                GUILayout.Label(user.colorScopeShared ? "team" : "personal", EditorStyles.miniLabel);
+            }
+        }
+
         static void OnHeaderGUI(Editor editor)
         {
             if (editor == null || editor.targets == null || editor.targets.Length != 1) return;
@@ -34,6 +101,12 @@ namespace ProjectNavigator
 
             var user = NavigatorUserState.instance;
             if (!user.inspectorStripEnabled) return;
+
+            if (target is GameObject gameObject && !EditorUtility.IsPersistent(gameObject))
+            {
+                if (user.inspectorStripForGameObjects) DrawSceneObjectStrip(gameObject, user);
+                return;
+            }
 
             bool isFolder = target is DefaultAsset;
             if (!isFolder)
