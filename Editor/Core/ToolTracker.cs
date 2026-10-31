@@ -85,7 +85,8 @@ namespace ProjectNavigator
         {
             var data = NavigatorGlobal.Data;
             // Nothing marked and nothing decorated earlier: no work at all (the common case).
-            if (data.windowMarks.Count == 0 && s_OriginalTitles.Count == 0 && !s_StripsPresent) return;
+            bool anySource = data.windowMarks.Count > 0 || (data.toolColorsOnWindows && NavigatorTools.AnyColoredWindowPins());
+            if (!anySource && s_OriginalTitles.Count == 0 && !s_StripsPresent) return;
 
             Profiler.BeginSample("ProjectNavigator.ApplyWindowMarks");
             var open = NavigatorTools.OpenWindows();
@@ -94,12 +95,11 @@ namespace ProjectNavigator
             {
                 try
                 {
-                    var mark = NavigatorTools.FindMark(window, open);
-                    bool colored = mark != null && mark.hasColor;
+                    bool colored = NavigatorTools.TryGetEffectiveColor(window, open, out var color);
                     if (colored && data.colorWindowStrips) anyStrip = true;
-                    if (colored && data.colorWindowStrips) EnsureStrip(window, mark.color);
+                    if (colored && data.colorWindowStrips) EnsureStrip(window, color);
                     else RemoveStrip(window);
-                    if (colored && data.colorWindowTabs) EnsureIcon(window, mark.color);
+                    if (colored && data.colorWindowTabs) EnsureIcon(window, color);
                     else RestoreIcon(window);
                 }
                 catch (Exception)

@@ -255,6 +255,7 @@ namespace ProjectNavigator
         {
             var mark = NavigatorTools.FindMark(window, open);
             var type = window.GetType();
+            bool hasColor = NavigatorTools.TryGetEffectiveColor(window, open, out var color);
             return new Entry
             {
                 kind = EntryKind.Window,
@@ -264,8 +265,8 @@ namespace ProjectNavigator
                 note = mark != null && !string.IsNullOrEmpty(mark.label) ? window.titleContent.text : "",
                 section = "Open windows",
                 pinned = NavigatorTools.IsWindowTypePinned(type),
-                hasColor = mark != null && mark.hasColor,
-                color = mark != null ? mark.color : Color.white,
+                hasColor = hasColor,
+                color = color,
                 icon = ToolTracker.OriginalIcon(window)
             };
         }

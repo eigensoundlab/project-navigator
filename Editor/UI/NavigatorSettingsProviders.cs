@@ -137,6 +137,8 @@ namespace ProjectNavigator
             data.recentWindowsCount = EditorGUILayout.IntSlider("Recent windows shown", data.recentWindowsCount, 3, 30);
             data.colorWindowTabs = EditorGUILayout.Toggle(new GUIContent("Colored windows: dot in the tab", "Replaces the tab icon of a colored window with a dot in its color"), data.colorWindowTabs);
             data.colorWindowStrips = EditorGUILayout.Toggle(new GUIContent("Colored windows: strip at the top", "Draws a thin colored strip at the top of a colored window's content"), data.colorWindowStrips);
+            data.toolColorsOnWindows = EditorGUILayout.Toggle(new GUIContent("Tool pin colors also color their windows", "A window opened by a colored tool pin gets that color in lists, in the switcher and on the window itself, unless the window has its own color"), data.toolColorsOnWindows);
+            data.closeTearOffsWithMain = EditorGUILayout.Toggle(new GUIContent("Close tear-off panels with the main window", "Closing the docked Navigator window also closes floating section panels"), data.closeTearOffsWithMain);
             if (EditorGUI.EndChangeCheck())
             {
                 NavigatorGlobal.MarkDirty();

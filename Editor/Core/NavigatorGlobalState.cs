@@ -26,6 +26,10 @@ namespace ProjectNavigator
         public int recentWindowsCount = 10;
         public bool colorWindowTabs = true;
         public bool colorWindowStrips = true;
+        /// <summary>A colored tool pin also colors the windows it opens (unless the window has its own color).</summary>
+        public bool toolColorsOnWindows = true;
+        /// <summary>Closing the docked Navigator also closes tear-off panels.</summary>
+        public bool closeTearOffsWithMain = false;
     }
 
     /// <summary>

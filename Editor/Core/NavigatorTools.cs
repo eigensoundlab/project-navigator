@@ -132,6 +132,7 @@ namespace ProjectNavigator
             pin.hasColor = color.HasValue;
             pin.color = color ?? Color.white;
             Navigator.MarkDirty(shared: shared, global: !shared);
+            ToolTracker.ApplyMarksNow();
             Navigator.NotifyChanged();
         }
 
@@ -332,6 +333,41 @@ namespace ProjectNavigator
             var typeKey = window.GetType().FullName;
             return marks.Find(m => !m.byType && m.key == key)
                 ?? marks.Find(m => m.byType && m.key == typeKey);
+        }
+
+        /// <summary>Color pin of a window-type tool pin, if any.</summary>
+        public static bool TryGetToolColorForType(Type type, out Color color)
+        {
+            color = Color.white;
+            if (type == null) return false;
+            var key = TypeKey(type);
+            foreach (var (pin, _) in AllToolPins())
+            {
+                if (pin.kind != ToolPinKind.Window || !pin.hasColor || pin.windowType != key) continue;
+                color = pin.color;
+                return true;
+            }
+            return false;
+        }
+
+        public static bool AnyColoredWindowPins()
+        {
+            return AllToolPins().Any(t => t.pin.kind == ToolPinKind.Window && t.pin.hasColor);
+        }
+
+        /// <summary>The color a window is shown with: its own mark, else (when enabled) the color of the tool pin that opens it.</summary>
+        public static bool TryGetEffectiveColor(EditorWindow window, IReadOnlyList<EditorWindow> openWindows, out Color color)
+        {
+            var mark = FindMark(window, openWindows);
+            if (mark != null && mark.hasColor)
+            {
+                color = mark.color;
+                return true;
+            }
+            if (Global.toolColorsOnWindows && TryGetToolColorForType(window.GetType(), out color))
+                return true;
+            color = Color.white;
+            return false;
         }
 
         /// <summary>Cheap fingerprint of the open-window state, for refreshing lists only when something changed.</summary>

@@ -9,7 +9,7 @@ namespace ProjectNavigator
     internal static class NavigatorVersion
     {
         /// <summary>Keep in sync with package.json for installs that copy the Editor folder into Assets/.</summary>
-        public const string Fallback = "0.4.1";
+        public const string Fallback = "0.4.2";
         public const string Repository = "https://github.com/eigensoundlab/project-navigator";
 
         static string s_Cached;

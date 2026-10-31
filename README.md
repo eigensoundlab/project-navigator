@@ -92,7 +92,8 @@ other windows: the reliable alternative to an "always on top" panel.
 - **Window colors and labels**: right-click a window row → *Color this window* or *Color all X
   windows*. A colored window gets a dot in its tab and a thin strip at the top of its content, so
   you can tell three instances of the same tool apart; a label replaces the title in the Navigator.
-  Both can be switched off in Preferences.
+  A colored tool pin colors the windows it opens the same way. All of it can be switched off in
+  Preferences.
 - `Alt+Shift+K` pins the window that was focused last.
 
 ## Other places the tool shows up

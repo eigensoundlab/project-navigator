@@ -280,6 +280,14 @@ namespace ProjectNavigator
 
         void OnDestroy()
         {
+            if (!m_IsFloating && !s_Quitting && NavigatorGlobal.Data.closeTearOffsWithMain)
+            {
+                EditorApplication.delayCall += () =>
+                {
+                    foreach (var window in Resources.FindObjectsOfTypeAll<NavigatorWindow>())
+                        if (window != null && window.IsTearOff) window.Close();
+                };
+            }
             if (!m_IsFloating || s_Quitting) return;
             if (IsTearOff)
             {
@@ -777,6 +785,7 @@ namespace ProjectNavigator
         {
             var mark = NavigatorTools.FindMark(window, open);
             var type = window.GetType();
+            bool hasColor = NavigatorTools.TryGetEffectiveColor(window, open, out var color);
             return new Row
             {
                 kind = RowKind.Window,
@@ -785,8 +794,8 @@ namespace ProjectNavigator
                 detail = type.Name + (window.docked ? " · docked" : " · floating") + (window.hasFocus ? " · focused" : ""),
                 note = mark != null && !string.IsNullOrEmpty(mark.label) ? window.titleContent.text : "",
                 pinned = NavigatorTools.IsWindowTypePinned(type),
-                hasColor = mark != null && mark.hasColor,
-                color = mark != null ? mark.color : Color.white,
+                hasColor = hasColor,
+                color = color,
                 icon = ToolTracker.OriginalIcon(window)
             };
         }

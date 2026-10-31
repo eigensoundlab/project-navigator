@@ -3,6 +3,12 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.2] - 2026-10-31
+### Added
+- A colored tool pin now colors the windows it opens (Windows section, window switcher, tab dot and
+  strip) unless the window has its own color. Preferences → *Tool pin colors also color their windows*.
+- Preferences → *Close tear-off panels with the main window* (off by default).
+
 ## [0.4.1] - 2026-10-31
 ### Added
 - Tear-off panels: any section can be opened as its own small floating window (⋮ → *Float section as
