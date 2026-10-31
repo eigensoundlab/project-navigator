@@ -93,6 +93,12 @@ other windows: the reliable alternative to an "always on top" panel.
 - The **Nav** column in the Hierarchy window shows a color stripe, a pin dot and the note as tooltip.
   Right-click the Hierarchy header to hide or move the column. (New Hierarchy window only, the default
   since Unity 6.6.)
+- **Isolation:** right-click a Scene row → *Isolate in Scene view* (Unity's Shift+H behaviour) or
+  switch on *Isolate on select* for pins you always want isolated; *Exit isolation* restores the view.
+- **From the Scene view:** `Alt+Shift+G` pins the selection, and the *Project Navigator* overlay
+  (Scene view → Overlays menu → enable it) offers Pin, Color, Note, Isolate and a Pins dropdown that
+  selects and frames, so you never need to go to the Hierarchy. Unity 6's Scene-view right-click menu
+  shows the same *Project Navigator* entries as the Hierarchy's.
 - Limits: objects inside an open prefab stage and objects created at runtime have no stable id and
   can't be pinned; save a new scene before pinning in it. Pins in team scope go into
   `ProjectSettings/ProjectNavigator.json` like everything else shared.

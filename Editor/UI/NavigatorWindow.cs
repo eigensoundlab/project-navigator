@@ -868,6 +868,8 @@ namespace ProjectNavigator
             element.Add(name);
 
             if (!string.IsNullOrEmpty(row.group)) element.Add(MakeChip(row.group));
+            if (row.kind == RowKind.SceneObject && SceneNavigator.FindPin(row.sceneId, out _) is ScenePin scenePin && scenePin.isolateOnSelect)
+                element.Add(MakeChip("isolate"));
             if (row.shared) element.Add(MakeChip("team"));
             if (row.kind != RowKind.Pin && row.kind != RowKind.Tool && row.pinned) element.Add(MakeChip("pinned"));
 
@@ -1172,6 +1174,9 @@ namespace ProjectNavigator
             {
                 menu.AppendAction("Select", _ => SceneNavigator.Select(id));
                 menu.AppendAction("Frame in Scene view", _ => SceneNavigator.Frame(id));
+                menu.AppendAction("Isolate in Scene view", _ => SceneNavigator.Isolate(id));
+                if (SceneNavigator.IsIsolated)
+                    menu.AppendAction("Exit isolation", _ => SceneNavigator.ExitIsolation());
                 menu.AppendAction("Copy hierarchy path", _ => EditorGUIUtility.systemCopyBuffer = (string.IsNullOrEmpty(row.scene.hierarchyPath) ? "" : row.scene.hierarchyPath + "/") + row.scene.name);
             }
             else if (!string.IsNullOrEmpty(row.scene.scenePath))
@@ -1183,6 +1188,8 @@ namespace ProjectNavigator
 
             if (pin != null)
             {
+                menu.AppendAction("Isolate on select", _ => SceneNavigator.SetIsolateOnSelect(id, !pin.isolateOnSelect),
+                    pin.isolateOnSelect ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
                 menu.AppendAction("Pin label... (display only)", _ => TextPromptWindow.Prompt("Pin label", "Label", pin.label, v => SceneNavigator.SetPinLabel(id, v)));
                 menu.AppendAction("Pin group...", _ => TextPromptWindow.Prompt("Pin group", "Group", pin.group, v => SceneNavigator.SetPinGroup(id, v)));
                 menu.AppendAction("Move up", _ => SceneNavigator.MovePin(id, -1));

@@ -3,6 +3,15 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.2] - 2026-10-31
+### Added
+- Hierarchy "Nav" column updates immediately when pins, colors or notes change (visible cells are
+  restyled directly instead of waiting for the window to rebuild its rows).
+- Isolation: *Isolate in Scene view* / *Exit isolation* on scene rows, and a per-pin *Isolate on select*
+  flag (uses Unity's SceneVisibilityManager, the same as Shift+H).
+- Scene view overlay "Project Navigator" (hidden by default; enable it from the Scene view's Overlays
+  menu): Pin, Color, Note, Isolate, and a Pins dropdown that selects and frames pinned objects.
+
 ## [0.5.1] - 2026-10-31
 ### Fixed
 - Compile error on 6000.6: `HierarchyViewColumnDescriptor.MinWidth` does not exist there (removed).

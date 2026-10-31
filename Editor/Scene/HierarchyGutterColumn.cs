@@ -6,8 +6,10 @@
 // public Hierarchy column API; users can hide or move it from the Hierarchy header's right-click menu.
 // Define PROJECT_NAVIGATOR_NO_HIERARCHY_COLUMN to compile the package without it.
 #if UNITY_6000_5_OR_NEWER && !PROJECT_NAVIGATOR_NO_HIERARCHY_COLUMN
+using System.Collections.Generic;
 using Unity.Hierarchy;
 using Unity.Hierarchy.Editor;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -21,6 +23,43 @@ namespace ProjectNavigator
         const string k_DotName = "pn-gutter-dot";
 
         static readonly Color k_PinDot = new Color(1f, 0.85f, 0.3f, 0.95f);
+
+        // Cells currently bound (as many as visible rows). The Hierarchy rebinds cells only when it rebuilds
+        // its rows, so marks changed elsewhere are applied to these directly instead of waiting for a rebuild.
+        static readonly Dictionary<HierarchyViewCell, GameObject> s_LiveCells = new Dictionary<HierarchyViewCell, GameObject>();
+        static readonly List<HierarchyViewCell> s_Dead = new List<HierarchyViewCell>();
+        static bool s_RefreshQueued;
+
+        [InitializeOnLoadMethod]
+        static void Init()
+        {
+            SceneNavigator.Invalidated -= QueueRefresh;
+            SceneNavigator.Invalidated += QueueRefresh;
+        }
+
+        static void QueueRefresh()
+        {
+            if (s_RefreshQueued) return;
+            s_RefreshQueued = true;
+            EditorApplication.delayCall += RefreshLiveCells;
+        }
+
+        static void RefreshLiveCells()
+        {
+            s_RefreshQueued = false;
+            s_Dead.Clear();
+            foreach (var pair in s_LiveCells)
+            {
+                var cell = pair.Key;
+                if (cell == null || cell.panel == null || pair.Value == null)
+                {
+                    s_Dead.Add(cell);
+                    continue;
+                }
+                Apply(cell, pair.Value);
+            }
+            foreach (var cell in s_Dead) s_LiveCells.Remove(cell);
+        }
 
         [HierarchyViewColumnDescriptor(k_ColumnId)]
         internal static void CreateColumn(HierarchyViewColumnDescriptor desc)
@@ -39,53 +78,59 @@ namespace ProjectNavigator
             {
                 var handler = (HierarchyGameObjectHandler)cell.Handler;
                 var gameObject = handler.GetGameObject(cell.Node);
-                var style = SceneNavigator.StyleFor(gameObject);
-
-                var row = cell.Q(k_RowName);
-                if (row == null)
-                {
-                    row = new VisualElement { name = k_RowName, pickingMode = PickingMode.Ignore };
-                    row.style.flexDirection = FlexDirection.Row;
-                    row.style.alignItems = Align.Center;
-                    row.style.flexGrow = 1;
-                    row.style.height = Length.Percent(100);
-
-                    var stripe = new VisualElement { name = k_StripeName, pickingMode = PickingMode.Ignore };
-                    stripe.style.width = 3;
-                    stripe.style.height = 14;
-                    stripe.style.marginLeft = 2;
-                    stripe.style.borderTopLeftRadius = 1;
-                    stripe.style.borderTopRightRadius = 1;
-                    stripe.style.borderBottomLeftRadius = 1;
-                    stripe.style.borderBottomRightRadius = 1;
-                    row.Add(stripe);
-
-                    var dot = new VisualElement { name = k_DotName, pickingMode = PickingMode.Ignore };
-                    dot.style.width = 6;
-                    dot.style.height = 6;
-                    dot.style.marginLeft = 3;
-                    dot.style.borderTopLeftRadius = 3;
-                    dot.style.borderTopRightRadius = 3;
-                    dot.style.borderBottomLeftRadius = 3;
-                    dot.style.borderBottomRightRadius = 3;
-                    dot.style.backgroundColor = k_PinDot;
-                    row.Add(dot);
-
-                    cell.Add(row);
-                }
-
-                var stripeElement = row.Q(k_StripeName);
-                var dotElement = row.Q(k_DotName);
-                stripeElement.style.display = style.hasColor ? DisplayStyle.Flex : DisplayStyle.None;
-                if (style.hasColor) stripeElement.style.backgroundColor = style.color;
-                dotElement.style.display = style.pinned ? DisplayStyle.Flex : DisplayStyle.None;
-
-                cell.tooltip = style.HasNote
-                    ? style.note
-                    : style.pinned ? "Pinned in Project Navigator" : "";
-
-                cell.IsDefaultValue = !style.Visible;
+                s_LiveCells[cell] = gameObject;
+                Apply(cell, gameObject);
             };
+        }
+
+        static void Apply(HierarchyViewCell cell, GameObject gameObject)
+        {
+            var style = SceneNavigator.StyleFor(gameObject);
+
+            var row = cell.Q(k_RowName);
+            if (row == null)
+            {
+                row = new VisualElement { name = k_RowName, pickingMode = PickingMode.Ignore };
+                row.style.flexDirection = FlexDirection.Row;
+                row.style.alignItems = Align.Center;
+                row.style.flexGrow = 1;
+                row.style.height = Length.Percent(100);
+
+                var stripe = new VisualElement { name = k_StripeName, pickingMode = PickingMode.Ignore };
+                stripe.style.width = 3;
+                stripe.style.height = 14;
+                stripe.style.marginLeft = 2;
+                stripe.style.borderTopLeftRadius = 1;
+                stripe.style.borderTopRightRadius = 1;
+                stripe.style.borderBottomLeftRadius = 1;
+                stripe.style.borderBottomRightRadius = 1;
+                row.Add(stripe);
+
+                var dot = new VisualElement { name = k_DotName, pickingMode = PickingMode.Ignore };
+                dot.style.width = 6;
+                dot.style.height = 6;
+                dot.style.marginLeft = 3;
+                dot.style.borderTopLeftRadius = 3;
+                dot.style.borderTopRightRadius = 3;
+                dot.style.borderBottomLeftRadius = 3;
+                dot.style.borderBottomRightRadius = 3;
+                dot.style.backgroundColor = k_PinDot;
+                row.Add(dot);
+
+                cell.Add(row);
+            }
+
+            var stripeElement = row.Q(k_StripeName);
+            var dotElement = row.Q(k_DotName);
+            stripeElement.style.display = style.hasColor ? DisplayStyle.Flex : DisplayStyle.None;
+            if (style.hasColor) stripeElement.style.backgroundColor = style.color;
+            dotElement.style.display = style.pinned ? DisplayStyle.Flex : DisplayStyle.None;
+
+            cell.tooltip = style.HasNote
+                ? style.note
+                : style.pinned ? "Pinned in Project Navigator" : "";
+
+            cell.IsDefaultValue = !style.Visible;
         }
     }
 }

@@ -202,3 +202,12 @@ no IMGUI path for the legacy window.
   is called; whether the window rebinds cells immediately is to be confirmed.
 - GameObject menu items run once per selected object in Unity; `SceneContextMenus.First(command)` keeps
   each action to one run over the whole selection.
+
+## Column refresh, isolation, Scene overlay (v0.5.2)
+
+- `HierarchyGutterColumn` keeps `Dictionary<HierarchyViewCell, GameObject>` of bound cells; `SceneNavigator.Invalidated`
+  queues one `delayCall` that restyles them (`cell.panel == null` entries are dropped). No rebuild of the Hierarchy needed.
+- Isolation = `SceneVisibilityManager.instance.Isolate(gameObjects, includeDescendants: true)` / `ExitIsolation()`;
+  `ScenePin.isolateOnSelect` is honored by `SceneNavigator.Select/Frame`.
+- `NavigatorSceneOverlay : ToolbarOverlay` with `[EditorToolbarElement]` buttons/dropdowns (`UnityEditor.Overlays`,
+  `UnityEditor.Toolbars`); `defaultDisplay` false.

@@ -59,6 +59,8 @@ namespace ProjectNavigator
         public string sceneGuid = "";
         /// <summary>Last known object name, shown while its scene is not loaded.</summary>
         public string lastName = "";
+        /// <summary>Selecting this pin also isolates the object (and its children) in the Scene view.</summary>
+        public bool isolateOnSelect;
     }
 
     /// <summary>A short free-text note attached to a folder or file (shown next to its path).</summary>

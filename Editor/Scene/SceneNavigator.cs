@@ -61,6 +61,9 @@ namespace ProjectNavigator
         /// <summary>Increases whenever scenes, the hierarchy or the scene marks changed; UI uses it to refresh lazily.</summary>
         public static int Stamp => s_Stamp;
 
+        /// <summary>Raised after <see cref="Invalidate"/> (the Hierarchy column restyles its visible cells from this).</summary>
+        public static event System.Action Invalidated;
+
         [InitializeOnLoadMethod]
         static void Init()
         {
@@ -82,6 +85,7 @@ namespace ProjectNavigator
         {
             s_Stamp++;
             EditorApplication.RepaintHierarchyWindow();
+            Invalidated?.Invoke();
         }
 
         // ------------------------------------------------------------------ identity
@@ -305,6 +309,7 @@ namespace ProjectNavigator
             if (go == null) return;
             Selection.activeGameObject = go;
             EditorGUIUtility.PingObject(go);
+            IsolateIfRequested(id, go);
         }
 
         public static void Frame(string id)
@@ -314,6 +319,49 @@ namespace ProjectNavigator
             Selection.activeGameObject = go;
             EditorGUIUtility.PingObject(go);
             SceneView.FrameLastActiveSceneView();
+            IsolateIfRequested(id, go);
+        }
+
+        static void IsolateIfRequested(string id, GameObject go)
+        {
+            var pin = FindPin(id, out _);
+            if (pin != null && pin.isolateOnSelect)
+                SceneVisibilityManager.instance.Isolate(new[] { go }, true);
+        }
+
+        // ------------------------------------------------------------------ isolation (Unity's Shift+H)
+
+        public static bool IsIsolated => SceneVisibilityManager.instance.IsCurrentStageIsolated();
+
+        /// <summary>Shows only this object and its children in the Scene view (SceneVisibilityManager.Isolate).</summary>
+        public static void Isolate(string id)
+        {
+            var go = Resolve(id);
+            if (go == null) return;
+            SceneVisibilityManager.instance.Isolate(new[] { go }, true);
+            SceneView.RepaintAll();
+        }
+
+        public static void IsolateSelection()
+        {
+            var selected = Selection.gameObjects;
+            if (selected.Length == 0) return;
+            SceneVisibilityManager.instance.Isolate(selected, true);
+            SceneView.RepaintAll();
+        }
+
+        public static void ExitIsolation()
+        {
+            SceneVisibilityManager.instance.ExitIsolation();
+            SceneView.RepaintAll();
+        }
+
+        public static void SetIsolateOnSelect(string id, bool value)
+        {
+            var pin = FindPin(id, out bool shared);
+            if (pin == null) return;
+            pin.isolateOnSelect = value;
+            Commit(shared);
         }
 
         /// <summary>Opens the object's scene (asking to save first) and selects the object once it is loaded.</summary>
