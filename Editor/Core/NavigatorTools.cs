@@ -300,11 +300,18 @@ namespace ProjectNavigator
         /// <summary>"Type|Title|ordinal": stable within a session, best-effort across editor restarts.</summary>
         public static string InstanceKey(EditorWindow window)
         {
+            return InstanceKey(window, OpenWindows());
+        }
+
+        /// <summary>Same, with the open-window list supplied by the caller (avoids re-listing windows per call).</summary>
+        public static string InstanceKey(EditorWindow window, IReadOnlyList<EditorWindow> openWindows)
+        {
             var title = window.titleContent.text;
             var type = window.GetType();
             int ordinal = 0;
-            foreach (var other in OpenWindows())
+            for (int i = 0; i < openWindows.Count; i++)
             {
+                var other = openWindows[i];
                 if (other == window) break;
                 if (other.GetType() == type && other.titleContent.text == title) ordinal++;
             }
@@ -313,11 +320,30 @@ namespace ProjectNavigator
 
         public static WindowMark FindMark(EditorWindow window)
         {
+            return window == null ? null : FindMark(window, OpenWindows());
+        }
+
+        public static WindowMark FindMark(EditorWindow window, IReadOnlyList<EditorWindow> openWindows)
+        {
             if (window == null) return null;
-            var key = InstanceKey(window);
+            var marks = Global.windowMarks;
+            if (marks.Count == 0) return null;
+            var key = InstanceKey(window, openWindows);
             var typeKey = window.GetType().FullName;
-            return Global.windowMarks.Find(m => !m.byType && m.key == key)
-                ?? Global.windowMarks.Find(m => m.byType && m.key == typeKey);
+            return marks.Find(m => !m.byType && m.key == key)
+                ?? marks.Find(m => m.byType && m.key == typeKey);
+        }
+
+        /// <summary>Cheap fingerprint of the open-window state, for refreshing lists only when something changed.</summary>
+        public static string WindowsSignature(IReadOnlyList<EditorWindow> openWindows)
+        {
+            var sb = new System.Text.StringBuilder(openWindows.Count * 24);
+            for (int i = 0; i < openWindows.Count; i++)
+            {
+                var w = openWindows[i];
+                sb.Append(w.GetHashCode()).Append(w.hasFocus ? 'F' : '-').Append(w.docked ? 'D' : '-').Append(w.titleContent.text).Append('|');
+            }
+            return sb.ToString();
         }
 
         public static string DisplayName(EditorWindow window)

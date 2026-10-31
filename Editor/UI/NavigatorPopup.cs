@@ -194,8 +194,9 @@ namespace ProjectNavigator
 
         void CollectWindows()
         {
-            foreach (var window in NavigatorTools.OpenWindows())
-                m_All.Add(MakeWindow(window));
+            var open = NavigatorTools.OpenWindows();
+            foreach (var window in open)
+                m_All.Add(MakeWindow(window, open));
             foreach (var recent in NavigatorTools.RecentWindows(NavigatorGlobal.Data.recentWindowsCount, closedOnly: true))
             {
                 m_All.Add(new Entry
@@ -250,9 +251,9 @@ namespace ProjectNavigator
             };
         }
 
-        static Entry MakeWindow(EditorWindow window)
+        static Entry MakeWindow(EditorWindow window, IReadOnlyList<EditorWindow> open)
         {
-            var mark = NavigatorTools.FindMark(window);
+            var mark = NavigatorTools.FindMark(window, open);
             var type = window.GetType();
             return new Entry
             {

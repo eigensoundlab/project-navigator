@@ -3,6 +3,16 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-10-31
+### Added
+- Tear-off panels: any section can be opened as its own small floating window (⋮ → *Float section as
+  window*, or right-click a section header / tab → *Open in floating window*); restored on startup.
+- Profiler markers (`ProjectNavigator.*`) for the periodic work, visible with "Profile Editor" enabled.
+### Changed
+- Window colors: the per-second pass lists open windows once instead of once per window, and does
+  nothing at all while no window is colored.
+- Windows section: rows are rebuilt only when the set of open windows, their titles, focus or docking changed.
+
 ## [0.4.0] - 2026-10-29
 ### Added
 - Configurable sections: each section can be shown or hidden per window kind (docked / floating) and per

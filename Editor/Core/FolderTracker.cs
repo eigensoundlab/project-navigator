@@ -3,6 +3,7 @@
 
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace ProjectNavigator
 {
@@ -60,7 +61,21 @@ namespace ProjectNavigator
             double now = EditorApplication.timeSinceStartup;
             if (now < s_NextPoll) return;
             s_NextPoll = now + Mathf.Max(0.1f, NavigatorUserState.instance.pollIntervalSeconds);
+            if (!ProjectBrowserBridge.CanReadActiveFolder) return;
 
+            Profiler.BeginSample("ProjectNavigator.PollActiveFolder");
+            try
+            {
+                PollInner();
+            }
+            finally
+            {
+                Profiler.EndSample();
+            }
+        }
+
+        static void PollInner()
+        {
             if (!ProjectBrowserBridge.TryGetActiveFolderPath(out var path)) return;
             if (path == s_LastPolledPath) return;
             s_LastPolledPath = path;

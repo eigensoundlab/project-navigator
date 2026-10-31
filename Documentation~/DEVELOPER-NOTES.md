@@ -173,3 +173,15 @@ first and navigates in a `delayCall`, because `Navigator.Open` changes focus and
   re-adds foldouts in configured order, hides the foldout header in tabs mode, and remembers the active tab per
   window kind.
 - The popup has two modes (`NavigatorPopup.Mode.Navigator` / `.Windows`); the Windows mode is the window switcher.
+
+## Tear-off panels and refresh policy (v0.4.1)
+
+A `NavigatorWindow` with `m_TearOffSection` set shows exactly one section, hides the tab bar, the
+Compact toggle and the foldout header, and persists its rect/open flag in `NavigatorGlobalData.tearOffs`
+(global, since the same panel is useful in every project). Startup reopens open panels after the
+floating Navigator. The Windows section refreshes on a 1 s timer but only rebuilds when
+`NavigatorTools.WindowsSignature` (hash, focus, docked, title per window) changed; `ToolTracker.ApplyMarks`
+returns immediately when no window is marked and nothing is decorated.
+
+Hierarchy decision: the Scene section will target the new Hierarchy window only (default since 6.6);
+no IMGUI path for the legacy window.

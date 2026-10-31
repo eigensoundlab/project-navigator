@@ -17,6 +17,7 @@ namespace ProjectNavigator
         public List<WindowMark> windowMarks = new List<WindowMark>();
         public List<RecentWindow> recentWindows = new List<RecentWindow>();
         public List<SectionSetting> sections = new List<SectionSetting>();
+        public List<TearOffPanel> tearOffs = new List<TearOffPanel>();
         public SectionLayout dockedLayout = SectionLayout.Stacked;
         public SectionLayout floatingLayout = SectionLayout.Stacked;
         public string dockedActiveTab = "";

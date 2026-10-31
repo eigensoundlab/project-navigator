@@ -126,6 +126,15 @@ namespace ProjectNavigator
         Tabs = 1
     }
 
+    /// <summary>A section opened as its own small floating window (e.g. a Tools panel next to the main Navigator).</summary>
+    [Serializable]
+    internal sealed class TearOffPanel
+    {
+        public string sectionId = "";
+        public Rect rect = new Rect(160f, 160f, 300f, 320f);
+        public bool open;
+    }
+
     /// <summary>Visibility of one Navigator section in each window kind and mode, plus its position in the order.</summary>
     [Serializable]
     internal sealed class SectionSetting

@@ -56,7 +56,10 @@ The tool starts working immediately: it records the folders you browse even whil
 
 Sections can be hidden or shown per window and per mode, reordered, and displayed stacked or as
 tabs: ⋮ menu → *Layout* and *Sections*, or Preferences → *Navigator sections*. *Compact* shows the
-sections you chose for compact mode (by default Pinned and Tools).
+sections you chose for compact mode (by default Pinned and Tools). Any section can also be torn off
+into its own small floating panel (⋮ → *Float section as window*, or right-click a section header or
+tab → *Open in floating window*), for example a Tools panel next to a docked Navigator that shows
+your pins; panels come back on startup.
 
 Row actions (right-click): Open, Select and Ping, Open Asset, Reveal in Explorer/Finder, Copy Path,
 Pin/Unpin, Note, Color, Rename on disk, Forget.
@@ -162,6 +165,11 @@ uses public APIs everywhere except in one optional file, `Editor/Core/ProjectBro
 which adds exact "which folder is being browsed" tracking. Delete that file (or run
 `Tools~/make-store-build.sh`) for a store build; the tool keeps working through the public path.
 
+## Roadmap
+
+Scene section (pins, colors and notes for GameObjects, with a gutter column in the new Hierarchy
+window; the legacy Hierarchy window is not supported), then a property watch board for the Inspector.
+
 ## Troubleshooting
 
 - *Pins and colors disappeared after replacing the package folder* → versions up to 0.3.0 stored
@@ -188,6 +196,15 @@ The repository root *is* the package (`package.json` at the top level). To work 
 
 Installing from the git URL (first install option above) puts a read-only copy into `Library/PackageCache`;
 that is for users, not for development. `Tools~/make-store-build.sh` produces the Asset Store flavor.
+
+Releases are also distributed as `git format-patch` files. On a clean checkout of the previous
+release: `git am --3way 0001-….patch` (several patches: apply them in order). If Unity rewrote a
+`.meta` file in your checkout, commit that first; `git am --abort` undoes a failed attempt.
+
+Performance: the tool does no per-frame work. It reacts to selection and asset-database events,
+polls the focused window a few times per second, and re-applies window colors once per second only
+while some window is colored. With *Profile Editor* enabled, its work shows up in the Profiler under
+`ProjectNavigator.*` markers.
 
 ## License
 

@@ -69,6 +69,10 @@ namespace ProjectNavigator
         static double s_QuitRequestedAt;
 
         [SerializeField] bool m_IsFloating;
+        /// <summary>When set, this window shows exactly one section as a small floating panel.</summary>
+        [SerializeField] string m_TearOffSection = "";
+
+        bool IsTearOff => !string.IsNullOrEmpty(m_TearOffSection);
 
         // ------------------------------------------------------------------ opening
 
@@ -117,6 +121,39 @@ namespace ProjectNavigator
             return new GUIContent("Navigator", EditorGUIUtility.IconContent("Folder Icon").image);
         }
 
+        /// <summary>Opens (or focuses) a floating panel that shows only one section.</summary>
+        public static void OpenTearOff(string sectionId)
+        {
+            if (Array.IndexOf(NavigatorSections.All, sectionId) < 0) return;
+            var existing = Resources.FindObjectsOfTypeAll<NavigatorWindow>().FirstOrDefault(w => w.m_TearOffSection == sectionId);
+            if (existing != null)
+            {
+                existing.Focus();
+                return;
+            }
+
+            var data = NavigatorGlobal.Data;
+            var panel = data.tearOffs.Find(t => t.sectionId == sectionId);
+            if (panel == null)
+            {
+                panel = new TearOffPanel { sectionId = sectionId };
+                data.tearOffs.Add(panel);
+            }
+
+            var window = CreateInstance<NavigatorWindow>();
+            window.m_IsFloating = true;
+            window.m_TearOffSection = sectionId;
+            window.titleContent = new GUIContent(NavigatorSections.Title(sectionId), EditorGUIUtility.IconContent("Folder Icon").image);
+            if (NavigatorUserState.instance.floatingOnTop) window.ShowUtility();
+            else window.Show();
+            if (panel.rect.width >= 120f && panel.rect.height >= 60f) window.position = panel.rect;
+
+            panel.open = true;
+            NavigatorGlobal.MarkDirty();
+        }
+
+        TearOffPanel TearOffPanel => IsTearOff ? NavigatorGlobal.Data.tearOffs.Find(t => t.sectionId == m_TearOffSection) : null;
+
         [InitializeOnLoadMethod]
         static void RegisterStartupHooks()
         {
@@ -130,9 +167,13 @@ namespace ProjectNavigator
         static void ReopenFloatingIfNeeded()
         {
             var user = NavigatorUserState.instance;
-            if (!user.reopenFloatingOnStartup || !user.floatingWasOpen) return;
-            if (Resources.FindObjectsOfTypeAll<NavigatorWindow>().Any(w => w.m_IsFloating)) return;
-            OpenFloating();
+            if (!user.reopenFloatingOnStartup) return;
+            var existing = Resources.FindObjectsOfTypeAll<NavigatorWindow>();
+            if (user.floatingWasOpen && !existing.Any(w => w.m_IsFloating && !w.IsTearOff))
+                OpenFloating();
+            foreach (var panel in NavigatorGlobal.Data.tearOffs.ToList())
+                if (panel.open && !existing.Any(w => w.m_TearOffSection == panel.sectionId))
+                    OpenTearOff(panel.sectionId);
         }
 
         static bool OnWantsToQuit()
@@ -140,10 +181,24 @@ namespace ProjectNavigator
             s_Quitting = true;
             s_QuitRequestedAt = EditorApplication.timeSinceStartup;
             foreach (var window in Resources.FindObjectsOfTypeAll<NavigatorWindow>())
-                if (window.m_IsFloating) NavigatorUserState.instance.floatingRect = window.position;
-            Navigator.MarkDirty(user: true);
+                window.StoreRect();
+            Navigator.MarkDirty(user: true, global: true);
             Navigator.FlushSaves();
             return true;
+        }
+
+        void StoreRect()
+        {
+            if (!m_IsFloating) return;
+            if (IsTearOff)
+            {
+                var panel = TearOffPanel;
+                if (panel != null) panel.rect = position;
+            }
+            else
+            {
+                NavigatorUserState.instance.floatingRect = position;
+            }
         }
 
         static void QuitFlagWatchdog()
@@ -169,6 +224,7 @@ namespace ProjectNavigator
         Row m_DragRow;
         Vector2 m_DragStart;
         double m_NextWindowsRefresh;
+        string m_WindowsSignature;
 
         bool Compact
         {
@@ -217,14 +273,21 @@ namespace ProjectNavigator
             EditorApplication.update -= PeriodicRefresh;
             if (m_IsFloating)
             {
-                NavigatorUserState.instance.floatingRect = position;
-                Navigator.MarkDirty(user: true);
+                StoreRect();
+                Navigator.MarkDirty(user: !IsTearOff, global: IsTearOff);
             }
         }
 
         void OnDestroy()
         {
-            if (m_IsFloating && !s_Quitting)
+            if (!m_IsFloating || s_Quitting) return;
+            if (IsTearOff)
+            {
+                var panel = TearOffPanel;
+                if (panel != null) panel.open = false;
+                NavigatorGlobal.MarkDirty();
+            }
+            else
             {
                 NavigatorUserState.instance.floatingWasOpen = false;
                 Navigator.MarkDirty(user: true);
@@ -236,14 +299,17 @@ namespace ProjectNavigator
             if (m_Scroll != null) Refresh();
         }
 
-        /// <summary>The Windows section mirrors live editor state (focus, open/closed), so it refreshes on its own.</summary>
+        /// <summary>The Windows section mirrors live editor state (focus, open/closed); it refreshes only when that state changed.</summary>
         void PeriodicRefresh()
         {
-            if (m_Scroll == null || !m_VisibleSections.Contains(NavigatorSections.Windows)) return;
+            if (m_Scroll == null || !Visible(NavigatorSections.Windows)) return;
             double now = EditorApplication.timeSinceStartup;
             if (now < m_NextWindowsRefresh) return;
-            m_NextWindowsRefresh = now + 2.0;
-            FillWindows();
+            m_NextWindowsRefresh = now + 1.0;
+            var open = NavigatorTools.OpenWindows();
+            var signature = NavigatorTools.WindowsSignature(open);
+            if (signature == m_WindowsSignature) return;
+            FillWindows(open, signature);
         }
 
         public void CreateGUI()
@@ -275,8 +341,24 @@ namespace ProjectNavigator
             m_Sections.Clear();
             foreach (var id in NavigatorSections.All)
             {
+                var sectionId = id;
                 var foldout = new Foldout { text = NavigatorSections.Title(id), value = id != NavigatorSections.Colored };
                 foldout.AddToClassList("pn-fold");
+                var header = foldout.Q<Toggle>();
+                header?.AddManipulator(new ContextualMenuManipulator(evt =>
+                {
+                    evt.menu.AppendAction("Open in floating window", _ => OpenTearOff(sectionId));
+                    if (!IsTearOff)
+                    {
+                        evt.menu.AppendAction("Hide section (this mode)", _ =>
+                        {
+                            NavigatorSections.SetVisible(Setting(sectionId), m_IsFloating, Compact, false);
+                            NavigatorGlobal.MarkDirty();
+                            RebuildLayout();
+                            Refresh();
+                        });
+                    }
+                }));
                 m_Sections[id] = foldout;
                 m_Scroll.Add(foldout);
             }
@@ -338,7 +420,7 @@ namespace ProjectNavigator
                 RebuildLayout();
                 Refresh();
             });
-            toolbar.Add(m_Compact);
+            if (!IsTearOff) toolbar.Add(m_Compact);
 
             if (!m_IsFloating)
                 toolbar.Add(Padded(new ToolbarButton(OpenFloating) { text = "Float", tooltip = "Open a floating copy (stays on top when enabled in preferences)" }));
@@ -364,6 +446,11 @@ namespace ProjectNavigator
                 }, _ => NavigatorSections.IsVisible(Setting(sectionId), m_IsFloating, Compact) ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
             }
             m_More.menu.AppendAction("Sections/Order and defaults...", _ => SettingsService.OpenUserPreferences(k_PreferencesPath));
+            foreach (var id in NavigatorSections.All)
+            {
+                var sectionId = id;
+                m_More.menu.AppendAction("Float section as window/" + NavigatorSections.Title(id), _ => OpenTearOff(sectionId));
+            }
             m_More.menu.AppendSeparator();
             m_More.menu.AppendAction("Pin a tool...", _ => ToolPickerWindow.Open());
             m_More.menu.AppendAction("Window switcher (Alt+Shift+W)", _ => NavigatorPopup.Open(NavigatorPopup.Mode.Windows));
@@ -431,13 +518,20 @@ namespace ProjectNavigator
                 if (!m_Sections.TryGetValue(setting.id, out var foldout)) continue;
                 foldout.RemoveFromHierarchy();
                 m_Scroll.Add(foldout); // appended in configured order
-                bool visible = NavigatorSections.IsVisible(setting, m_IsFloating, compact);
-                if (setting.id == NavigatorSections.RecentFiles && !trackFiles) visible = false;
+                bool visible = IsTearOff ? setting.id == m_TearOffSection : NavigatorSections.IsVisible(setting, m_IsFloating, compact);
+                if (setting.id == NavigatorSections.RecentFiles && !trackFiles && !IsTearOff) visible = false;
                 if (visible) m_VisibleSections.Add(setting.id);
                 foldout.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
             }
 
-            bool tabs = Layout == SectionLayout.Tabs && m_VisibleSections.Count > 1;
+            if (IsTearOff && m_VisibleSections.Count == 1)
+            {
+                var only = m_Sections[m_VisibleSections[0]];
+                only.value = true;
+                HideFoldoutHeader(only, true);
+            }
+
+            bool tabs = !IsTearOff && Layout == SectionLayout.Tabs && m_VisibleSections.Count > 1;
             m_TabBar.Clear();
             m_TabBar.style.display = tabs ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -464,6 +558,17 @@ namespace ProjectNavigator
                         RebuildLayout();
                         Refresh();
                     });
+                    toggle.AddManipulator(new ContextualMenuManipulator(evt =>
+                    {
+                        evt.menu.AppendAction("Open in floating window", _ => OpenTearOff(sectionId));
+                        evt.menu.AppendAction("Hide section", _ =>
+                        {
+                            NavigatorSections.SetVisible(Setting(sectionId), m_IsFloating, Compact, false);
+                            NavigatorGlobal.MarkDirty();
+                            RebuildLayout();
+                            Refresh();
+                        });
+                    }));
                     m_TabBar.Add(toggle);
                 }
                 foreach (var id in m_VisibleSections)
@@ -480,7 +585,7 @@ namespace ProjectNavigator
                     HideFoldoutHeader(m_Sections[id], false);
             }
 
-            minSize = compact ? new Vector2(200f, 80f) : new Vector2(260f, 200f);
+            minSize = compact || IsTearOff ? new Vector2(200f, 80f) : new Vector2(260f, 200f);
         }
 
         static void HideFoldoutHeader(Foldout foldout, bool hide)
@@ -546,7 +651,10 @@ namespace ProjectNavigator
             if (Visible(NavigatorSections.Tools))
                 FillTools();
             if (Visible(NavigatorSections.Windows))
-                FillWindows();
+            {
+                var open = NavigatorTools.OpenWindows();
+                FillWindows(open, NavigatorTools.WindowsSignature(open));
+            }
         }
 
         bool Visible(string id)
@@ -665,9 +773,9 @@ namespace ProjectNavigator
             };
         }
 
-        static Row MakeWindowRow(EditorWindow window)
+        static Row MakeWindowRow(EditorWindow window, IReadOnlyList<EditorWindow> open)
         {
-            var mark = NavigatorTools.FindMark(window);
+            var mark = NavigatorTools.FindMark(window, open);
             var type = window.GetType();
             return new Row
             {
@@ -1105,14 +1213,15 @@ namespace ProjectNavigator
             foldout.text = $"Tools ({shown})";
         }
 
-        void FillWindows()
+        void FillWindows(IReadOnlyList<EditorWindow> open, string signature)
         {
+            m_WindowsSignature = signature;
             var foldout = m_Sections[NavigatorSections.Windows];
             foldout.Clear();
             int shown = 0;
-            foreach (var window in NavigatorTools.OpenWindows())
+            foreach (var window in open)
             {
-                var row = MakeWindowRow(window);
+                var row = MakeWindowRow(window, open);
                 if (!PassesFilter(row)) continue;
                 foldout.Add(MakeRow(row));
                 shown++;

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.UIElements;
 
 namespace ProjectNavigator
@@ -26,6 +27,7 @@ namespace ProjectNavigator
         static EditorWindow s_LastForeign;
         static readonly Dictionary<int, GUIContent> s_OriginalTitles = new Dictionary<int, GUIContent>();
         static readonly Dictionary<Color, Texture2D> s_Dots = new Dictionary<Color, Texture2D>();
+        static bool s_StripsPresent = true; // assume yes after a domain reload so leftovers get cleaned once
 
         static ToolTracker()
         {
@@ -53,6 +55,19 @@ namespace ProjectNavigator
 
         static void PollFocus()
         {
+            Profiler.BeginSample("ProjectNavigator.PollFocus");
+            try
+            {
+                PollFocusInner();
+            }
+            finally
+            {
+                Profiler.EndSample();
+            }
+        }
+
+        static void PollFocusInner()
+        {
             var window = EditorWindow.focusedWindow;
             if (window == null || NavigatorTools.IsNavigatorWindow(window)) return;
             if (window == s_LastForeign) return;
@@ -69,12 +84,19 @@ namespace ProjectNavigator
         static void ApplyMarks()
         {
             var data = NavigatorGlobal.Data;
-            foreach (var window in NavigatorTools.OpenWindows())
+            // Nothing marked and nothing decorated earlier: no work at all (the common case).
+            if (data.windowMarks.Count == 0 && s_OriginalTitles.Count == 0 && !s_StripsPresent) return;
+
+            Profiler.BeginSample("ProjectNavigator.ApplyWindowMarks");
+            var open = NavigatorTools.OpenWindows();
+            bool anyStrip = false;
+            foreach (var window in open)
             {
                 try
                 {
-                    var mark = NavigatorTools.FindMark(window);
+                    var mark = NavigatorTools.FindMark(window, open);
                     bool colored = mark != null && mark.hasColor;
+                    if (colored && data.colorWindowStrips) anyStrip = true;
                     if (colored && data.colorWindowStrips) EnsureStrip(window, mark.color);
                     else RemoveStrip(window);
                     if (colored && data.colorWindowTabs) EnsureIcon(window, mark.color);
@@ -85,6 +107,8 @@ namespace ProjectNavigator
                     // A window that refuses decoration is left alone.
                 }
             }
+            s_StripsPresent = anyStrip;
+            Profiler.EndSample();
         }
 
         /// <summary>The window's own icon, even while the tab shows a color dot.</summary>
