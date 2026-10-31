@@ -9,7 +9,13 @@ namespace ProjectNavigator
     internal static class NavigatorMenu
     {
         [MenuItem("Window/Project Navigator/Popup at Cursor", false, 12)]
-        static void Popup() => NavigatorPopup.Open();
+        static void Popup() => NavigatorPopup.Open(NavigatorPopup.Mode.Navigator);
+
+        [MenuItem("Window/Project Navigator/Window Switcher", false, 14)]
+        static void WindowSwitcher() => NavigatorPopup.Open(NavigatorPopup.Mode.Windows);
+
+        [MenuItem("Window/Project Navigator/Pin a Tool...", false, 15)]
+        static void PinTool() => ToolPickerWindow.Open();
 
         [MenuItem("Window/Project Navigator/Quick Jump (Search)", false, 13)]
         static void QuickJump() => NavigatorSearchProvider.ShowQuickJump();

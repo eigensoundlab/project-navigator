@@ -195,6 +195,46 @@ MonoBehaviour:
         }
     }
 
+    public class SectionsTests
+    {
+        [Test]
+        public void EnsureDefaults_FillsMissingKeepsOrderDropsUnknown()
+        {
+            var list = new System.Collections.Generic.List<SectionSetting>
+            {
+                new SectionSetting { id = NavigatorSections.Tools },
+                new SectionSetting { id = "bogus" },
+                new SectionSetting { id = NavigatorSections.Pinned, docked = false }
+            };
+            NavigatorSections.EnsureDefaults(list);
+            Assert.AreEqual(NavigatorSections.All.Length, list.Count);
+            Assert.AreEqual(NavigatorSections.Tools, list[0].id);
+            Assert.AreEqual(NavigatorSections.Pinned, list[1].id);
+            Assert.IsFalse(list[1].docked, "existing settings are kept");
+            Assert.IsFalse(list.Exists(s => s.id == "bogus"));
+        }
+
+        [Test]
+        public void Visibility_PerWindowKindAndMode()
+        {
+            var s = NavigatorSections.Default(NavigatorSections.Pinned);
+            Assert.IsTrue(NavigatorSections.IsVisible(s, floating: false, compact: true));
+            NavigatorSections.SetVisible(s, floating: true, compact: true, value: false);
+            Assert.IsFalse(NavigatorSections.IsVisible(s, floating: true, compact: true));
+            Assert.IsTrue(NavigatorSections.IsVisible(s, floating: true, compact: false));
+        }
+    }
+
+    public class ToolsTests
+    {
+        [Test]
+        public void ShortTypeName_StripsAssemblyAndNamespace()
+        {
+            Assert.AreEqual("InspectorWindow", NavigatorTools.ShortTypeName("UnityEditor.InspectorWindow, UnityEditor.CoreModule, Version=0.0.0.0"));
+            Assert.AreEqual("Foo", NavigatorTools.ShortTypeName("Foo"));
+        }
+    }
+
     public class GlobMatcherTests
     {
         [Test]

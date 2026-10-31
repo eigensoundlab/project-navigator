@@ -1,6 +1,7 @@
 // Copyright 2026 Daniel Sandner
 // SPDX-License-Identifier: Apache-2.0
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -9,28 +10,50 @@ using UnityEngine;
 namespace ProjectNavigator
 {
     /// <summary>
-    /// "Popup at cursor": a compact panel summoned by a shortcut (default Alt+Shift+Space) at the mouse
-    /// position. It lists pinned, frequent and recent folders (and recent files), filters as you type,
-    /// opens the highlighted entry with Enter, and closes when it loses focus or on Escape.
-    /// Because it only exists while it has focus, window stacking never gets in its way.
+    /// Popup at the cursor, summoned by a shortcut and closed on focus loss, so window stacking never
+    /// hides it. Two modes:
+    ///  - Navigator (Alt+Shift+Space): pinned, frequent and recent folders/files, pinned tools.
+    ///  - Windows (Alt+Shift+W): open editor windows to switch to, then recently used (closed) ones.
+    /// Type to filter, ↑/↓ to move, Enter to open, Ctrl+P to pin/unpin, Esc to close.
     /// </summary>
     internal sealed class NavigatorPopup : EditorWindow
     {
+        public enum Mode
+        {
+            Navigator,
+            Windows
+        }
+
+        enum EntryKind
+        {
+            Asset,
+            Tool,
+            Window,
+            RecentWindow
+        }
+
         sealed class Entry
         {
-            public string guid;
-            public string path;
+            public EntryKind kind;
             public string label;
+            public string detail;
             public string note;
             public string section;
-            public bool isFolder;
             public bool pinned;
             public bool hasColor;
             public Color color;
             public Texture icon;
+            // asset
+            public string guid;
+            public string path;
+            public bool isFolder;
+            // tool / window
+            public ToolPin tool;
+            public EditorWindow window;
+            public RecentWindow recent;
         }
 
-        const float k_Width = 380f;
+        const float k_Width = 400f;
         const float k_RowHeight = 20f;
         const int k_MaxVisibleRows = 18;
         const string k_SearchControl = "pn-popup-search";
@@ -39,6 +62,7 @@ namespace ProjectNavigator
 
         readonly List<Entry> m_All = new List<Entry>();
         readonly List<Entry> m_Visible = new List<Entry>();
+        Mode m_Mode;
         string m_Filter = "";
         int m_Index;
         Vector2 m_Scroll;
@@ -47,25 +71,31 @@ namespace ProjectNavigator
         GUIStyle m_PathStyle;
         GUIStyle m_SectionStyle;
 
-        public static void Toggle()
+        public static void Toggle(Mode mode)
         {
             if (s_Instance != null)
             {
+                bool same = s_Instance.m_Mode == mode;
                 s_Instance.Close();
-                return;
+                if (same) return;
             }
-            Open();
+            Open(mode);
         }
 
-        public static void Open()
+        public static void Open(Mode mode)
         {
             if (s_Instance != null)
             {
-                s_Instance.Focus();
-                return;
+                if (s_Instance.m_Mode == mode)
+                {
+                    s_Instance.Focus();
+                    return;
+                }
+                s_Instance.Close();
             }
 
             var window = CreateInstance<NavigatorPopup>();
+            window.m_Mode = mode;
             window.Collect();
 
             float height = Mathf.Clamp(window.m_Visible.Count + 2, 4, k_MaxVisibleRows) * k_RowHeight + 34f;
@@ -87,7 +117,7 @@ namespace ProjectNavigator
                 {
                     return GUIUtility.GUIToScreenPoint(evt.mousePosition);
                 }
-                catch (System.Exception)
+                catch (Exception)
                 {
                     // Not inside an OnGUI pass; fall through.
                 }
@@ -111,16 +141,24 @@ namespace ProjectNavigator
 
         void OnLostFocus()
         {
-            // Closing from inside the focus callback is unsafe on some platforms; defer by one tick.
             EditorApplication.delayCall += () =>
             {
                 if (this != null) Close();
             };
         }
 
+        // ------------------------------------------------------------------ data
+
         void Collect()
         {
             m_All.Clear();
+            if (m_Mode == Mode.Windows) CollectWindows();
+            else CollectNavigator();
+            ApplyFilter();
+        }
+
+        void CollectNavigator()
+        {
             var user = NavigatorUserState.instance;
             var seen = new HashSet<string>();
 
@@ -128,38 +166,59 @@ namespace ProjectNavigator
             {
                 var info = Navigator.GetInfo(pin.guid);
                 if (!info.Exists || !seen.Add(info.guid)) continue;
-                var entry = Make(info, "Pinned" + (shared ? " (team)" : ""));
+                var entry = MakeAsset(info, "Pinned" + (shared ? " (team)" : ""));
                 if (!string.IsNullOrEmpty(pin.label)) entry.label = pin.label;
                 m_All.Add(entry);
             }
+            foreach (var (pin, shared) in NavigatorTools.AllToolPins())
+                m_All.Add(MakeTool(pin, "Tools" + (shared ? " (team)" : "")));
             foreach (var (info, _) in Navigator.Frequent(user.frequentCount))
             {
                 if (!seen.Add(info.guid)) continue;
-                m_All.Add(Make(info, "Frequent"));
+                m_All.Add(MakeAsset(info, "Frequent"));
             }
             foreach (var info in Navigator.Recent(user.recentCount))
             {
                 if (!seen.Add(info.guid)) continue;
-                m_All.Add(Make(info, "Recent"));
+                m_All.Add(MakeAsset(info, "Recent"));
             }
             if (user.trackFiles)
             {
                 foreach (var info in Navigator.RecentFiles(user.recentFilesCount))
                 {
                     if (!seen.Add(info.guid)) continue;
-                    m_All.Add(Make(info, "Recent files"));
+                    m_All.Add(MakeAsset(info, "Recent files"));
                 }
             }
-            ApplyFilter();
         }
 
-        static Entry Make(AssetInfo info, string section)
+        void CollectWindows()
+        {
+            foreach (var window in NavigatorTools.OpenWindows())
+                m_All.Add(MakeWindow(window));
+            foreach (var recent in NavigatorTools.RecentWindows(NavigatorGlobal.Data.recentWindowsCount, closedOnly: true))
+            {
+                m_All.Add(new Entry
+                {
+                    kind = EntryKind.RecentWindow,
+                    recent = recent,
+                    label = recent.title,
+                    detail = NavigatorTools.ShortTypeName(recent.windowType) + " · closed",
+                    section = "Recently used",
+                    icon = EditorGUIUtility.FindTexture("_Popup")
+                });
+            }
+        }
+
+        static Entry MakeAsset(AssetInfo info, string section)
         {
             var entry = new Entry
             {
+                kind = EntryKind.Asset,
                 guid = info.guid,
                 path = info.path,
                 label = info.name,
+                detail = Navigator.ParentOf(info.path),
                 note = Navigator.GetNote(info.guid),
                 section = section,
                 isFolder = info.isFolder,
@@ -172,6 +231,42 @@ namespace ProjectNavigator
                 entry.color = style.color;
             }
             return entry;
+        }
+
+        static Entry MakeTool(ToolPin pin, string section)
+        {
+            return new Entry
+            {
+                kind = EntryKind.Tool,
+                tool = pin,
+                label = NavigatorTools.Label(pin),
+                detail = NavigatorTools.Detail(pin),
+                note = pin.group,
+                section = section,
+                pinned = true,
+                hasColor = pin.hasColor,
+                color = pin.color,
+                icon = NavigatorTools.Icon(pin)
+            };
+        }
+
+        static Entry MakeWindow(EditorWindow window)
+        {
+            var mark = NavigatorTools.FindMark(window);
+            var type = window.GetType();
+            return new Entry
+            {
+                kind = EntryKind.Window,
+                window = window,
+                label = NavigatorTools.DisplayName(window),
+                detail = type.Name + (window.docked ? " · docked" : " · floating") + (window.hasFocus ? " · focused" : ""),
+                note = mark != null && !string.IsNullOrEmpty(mark.label) ? window.titleContent.text : "",
+                section = "Open windows",
+                pinned = NavigatorTools.IsWindowTypePinned(type),
+                hasColor = mark != null && mark.hasColor,
+                color = mark != null ? mark.color : Color.white,
+                icon = ToolTracker.OriginalIcon(window)
+            };
         }
 
         void ApplyFilter()
@@ -187,8 +282,8 @@ namespace ProjectNavigator
                 foreach (var entry in m_All)
                 {
                     int score = FuzzyMatcher.Score(m_Filter, entry.label);
-                    int pathScore = FuzzyMatcher.Score(m_Filter, entry.path);
-                    if (pathScore - 2 > score) score = pathScore - 2;
+                    int detailScore = FuzzyMatcher.Score(m_Filter, entry.detail ?? "");
+                    if (detailScore - 2 > score) score = detailScore - 2;
                     if (!string.IsNullOrEmpty(entry.note))
                     {
                         int noteScore = FuzzyMatcher.Score(m_Filter, entry.note);
@@ -201,12 +296,13 @@ namespace ProjectNavigator
             m_Index = Mathf.Clamp(m_Index, 0, Mathf.Max(0, m_Visible.Count - 1));
         }
 
+        // ------------------------------------------------------------------ GUI
+
         void OnGUI()
         {
             EnsureStyles();
             HandleKeys();
 
-            // Border so the popup reads as a panel on both skins.
             var border = new Rect(0f, 0f, position.width, position.height);
             EditorGUI.DrawRect(border, EditorGUIUtility.isProSkin ? new Color(0.14f, 0.14f, 0.14f) : new Color(0.55f, 0.55f, 0.55f));
             EditorGUI.DrawRect(new Rect(1f, 1f, position.width - 2f, position.height - 2f),
@@ -231,7 +327,8 @@ namespace ProjectNavigator
             m_Scroll = EditorGUILayout.BeginScrollView(m_Scroll, GUIStyle.none, GUI.skin.verticalScrollbar);
             if (m_Visible.Count == 0)
             {
-                GUILayout.Label(m_All.Count == 0 ? "Nothing pinned or visited yet." : "No match.", EditorStyles.centeredGreyMiniLabel);
+                string empty = m_All.Count > 0 ? "No match." : m_Mode == Mode.Windows ? "No open windows." : "Nothing pinned or visited yet.";
+                GUILayout.Label(empty, EditorStyles.centeredGreyMiniLabel);
             }
             string lastSection = null;
             for (int i = 0; i < m_Visible.Count; i++)
@@ -246,7 +343,6 @@ namespace ProjectNavigator
             }
             EditorGUILayout.EndScrollView();
             GUILayout.EndArea();
-
         }
 
         void DrawRow(Entry entry, bool selected)
@@ -270,15 +366,15 @@ namespace ProjectNavigator
                     GUI.DrawTexture(iconRect, entry.icon, ScaleMode.ScaleToFit, true);
                     GUI.color = previous;
                 }
-                if (entry.pinned)
+                if (entry.pinned && entry.kind != EntryKind.Tool)
                     EditorGUI.DrawRect(new Rect(iconRect.xMax - 5f, iconRect.y, 4f, 4f), new Color(1f, 0.85f, 0.3f, 0.95f));
 
                 var labelRect = new Rect(rect.x + 28f, rect.y, rect.width * 0.5f, rect.height);
                 GUI.Label(labelRect, entry.label, m_RowStyle);
 
                 var right = new Rect(labelRect.xMax, rect.y, rect.width - labelRect.width - 30f, rect.height);
-                string detail = string.IsNullOrEmpty(entry.note) ? Navigator.ParentOf(entry.path) : entry.note + "  ·  " + Navigator.ParentOf(entry.path);
-                GUI.Label(right, new GUIContent(detail, entry.path), m_PathStyle);
+                string detail = string.IsNullOrEmpty(entry.note) ? entry.detail : entry.note + "  ·  " + entry.detail;
+                GUI.Label(right, new GUIContent(detail, entry.path ?? entry.detail), m_PathStyle);
             }
 
             if (Event.current.type == EventType.MouseDown && hover && Event.current.button == 0)
@@ -322,16 +418,38 @@ namespace ProjectNavigator
                     {
                         evt.Use();
                         if (m_Index >= 0 && m_Index < m_Visible.Count)
-                        {
-                            var entry = m_Visible[m_Index];
-                            if (entry.pinned) Navigator.Unpin(entry.guid);
-                            else Navigator.Pin(entry.guid, false);
-                            Collect();
-                            Repaint();
-                        }
+                            TogglePin(m_Visible[m_Index]);
                     }
                     break;
             }
+        }
+
+        void TogglePin(Entry entry)
+        {
+            switch (entry.kind)
+            {
+                case EntryKind.Asset:
+                    if (entry.pinned) Navigator.Unpin(entry.guid);
+                    else Navigator.Pin(entry.guid, false);
+                    break;
+                case EntryKind.Tool:
+                    NavigatorTools.UnpinTool(entry.tool.id);
+                    break;
+                case EntryKind.Window:
+                    if (entry.pinned)
+                    {
+                        var pin = NavigatorTools.AllToolPins().FirstOrDefault(t => t.pin.kind == ToolPinKind.Window && t.pin.windowType == NavigatorTools.TypeKey(entry.window.GetType())).pin;
+                        if (pin != null) NavigatorTools.UnpinTool(pin.id);
+                    }
+                    else NavigatorTools.PinWindowType(entry.window.GetType(), false);
+                    break;
+                case EntryKind.RecentWindow:
+                    var type = NavigatorTools.ResolveType(entry.recent.windowType);
+                    if (type != null) NavigatorTools.PinWindowType(type, false);
+                    break;
+            }
+            Collect();
+            Repaint();
         }
 
         void EnsureVisible()
@@ -342,15 +460,30 @@ namespace ProjectNavigator
             else if (rowTop + k_RowHeight > m_Scroll.y + viewHeight) m_Scroll.y = rowTop + k_RowHeight - viewHeight;
         }
 
-        /// <summary>Enter / click: folders open in the Project window, files are selected. Shift+Enter / double-click on a file opens the asset.</summary>
-        void Activate(Entry entry, bool openAsset)
+        /// <summary>Enter / click. Folders open in the Project window, files are selected (Shift+Enter opens the asset), tools launch, windows get focus.</summary>
+        void Activate(Entry entry, bool alternate)
         {
-            var guid = entry.guid;
             Close();
             EditorApplication.delayCall += () =>
             {
-                if (openAsset && !entry.isFolder) Navigator.OpenAsset(guid);
-                else Navigator.Open(guid);
+                switch (entry.kind)
+                {
+                    case EntryKind.Asset:
+                        if (alternate && !entry.isFolder) Navigator.OpenAsset(entry.guid);
+                        else Navigator.Open(entry.guid);
+                        break;
+                    case EntryKind.Tool:
+                        NavigatorTools.Launch(entry.tool);
+                        break;
+                    case EntryKind.Window:
+                        NavigatorTools.Focus(entry.window);
+                        break;
+                    case EntryKind.RecentWindow:
+                        var type = NavigatorTools.ResolveType(entry.recent.windowType);
+                        if (type != null) NavigatorTools.FocusOrOpen(type);
+                        else Debug.LogWarning($"[Project Navigator] Window type not found: {entry.recent.windowType}");
+                        break;
+                }
             };
         }
 
@@ -364,7 +497,8 @@ namespace ProjectNavigator
                 clipping = TextClipping.Clip,
                 fontStyle = FontStyle.Italic
             };
-            m_PathStyle.normal.textColor = new Color(m_PathStyle.normal.textColor.r, m_PathStyle.normal.textColor.g, m_PathStyle.normal.textColor.b, 0.6f);
+            var c = m_PathStyle.normal.textColor;
+            m_PathStyle.normal.textColor = new Color(c.r, c.g, c.b, 0.6f);
             m_SectionStyle = new GUIStyle(EditorStyles.miniBoldLabel) { padding = new RectOffset(6, 0, 4, 0) };
         }
     }

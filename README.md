@@ -1,8 +1,9 @@
 # Project Navigator
 
 Fast movement through a Unity project: pinned, frequent and recent folders and files, folder
-colors and notes, back/forward navigation, a floating panel and a quick-jump search.
-Editor-only, nothing is written into `Assets/` or `.meta` files.
+colors and notes, back/forward navigation, pinned editor tools and windows with a window switcher,
+a popup at the cursor and a quick-jump search. Editor-only, nothing is written into `Assets/` or
+`.meta` files.
 
 Requires **Unity 6.6 (6000.6) or newer**. License: Apache-2.0.
 Author: Daniel Sandner — [eigensound.com](https://eigensound.com/) (sound design and research).
@@ -50,6 +51,12 @@ The tool starts working immediately: it records the folders you browse even whil
 | **Recent** | Folders you browsed, newest first. Survives editor restarts. |
 | **Recent files** | Files you selected (off by default: Preferences → *Track selected files*). |
 | **Colored** | Every colored folder and file, grouped by color tag. |
+| **Tools** | Pinned menu items and editor windows; click to launch. *Pin a tool...* searches every menu item in the editor. |
+| **Windows** | Open editor windows (click to focus) with their labels and colors, then recently used ones. |
+
+Sections can be hidden or shown per window and per mode, reordered, and displayed stacked or as
+tabs: ⋮ menu → *Layout* and *Sections*, or Preferences → *Navigator sections*. *Compact* shows the
+sections you chose for compact mode (by default Pinned and Tools).
 
 Row actions (right-click): Open, Select and Ping, Open Asset, Reveal in Explorer/Finder, Copy Path,
 Pin/Unpin, Note, Color, Rename on disk, Forget.
@@ -69,6 +76,21 @@ position with your pinned, frequent and recent entries. Type to filter by name, 
 `Shift+Enter` opens a file), `Ctrl+P` to pin or unpin the highlighted entry, `Esc` or clicking
 anywhere else closes it. Since the panel only exists while it has focus, it is never hidden behind
 other windows: the reliable alternative to an "always on top" panel.
+
+## Tools and windows
+
+- **Pin a tool** (Tools section, ⋮ menu, `Window → Project Navigator → Pin a Tool...`): search any
+  menu item in the editor, including third-party tools wherever they sit in the menus, or pick an
+  open window. A pinned window opens when closed and gets focus when open; with several open
+  windows of the same type, each launch cycles to the next one. Pins can be labelled, grouped,
+  colored, and are personal (all your projects) or team (this project).
+- **Window switcher** (`Alt+Shift+W`): a popup listing every open window, docked or floating, with
+  the focused one marked; type to filter, Enter to focus. Closed windows you used recently follow.
+- **Window colors and labels**: right-click a window row → *Color this window* or *Color all X
+  windows*. A colored window gets a dot in its tab and a thin strip at the top of its content, so
+  you can tell three instances of the same tool apart; a label replaces the title in the Navigator.
+  Both can be switched off in Preferences.
+- `Alt+Shift+K` pins the window that was focused last.
 
 ## Other places the tool shows up
 
@@ -91,6 +113,8 @@ All rebindable in Edit → Shortcuts, group "Project Navigator".
 | Alt+Up | Parent folder |
 | Alt+Shift+N | Navigator window |
 | Alt+Shift+Space | Popup at cursor |
+| Alt+Shift+W | Window switcher |
+| Alt+Shift+K | Pin the last focused window |
 | Alt+Shift+F | Quick jump (search) |
 | Alt+Shift+P | Pin / unpin the current folder |
 | Alt+1 … Alt+9 | Open pin 1–9 |
@@ -123,9 +147,12 @@ cursor (`Alt+Shift+Space`), the main-toolbar *Folders* dropdown or the shortcuts
 | --- | --- | --- |
 | `ProjectSettings/ProjectNavigator.json` | tags, rules, team pins, team colors, team notes | commit |
 | `UserSettings/ProjectNavigator.json` | history, frequency, personal pins/colors/notes, preferences | ignored by default |
+| `<application data>/ProjectNavigator/global.json` | tool pins, window colors and labels, recent windows, section layout — for all projects on this machine | not in the project |
 
 Everything is keyed by asset GUID, so renames and moves keep pins, colors and notes attached.
 The files are plain JSON, so they also survive reinstalling, renaming or moving the package itself.
+Each project has its own pins, colors, notes and history; only tool pins, window colors and the
+window layout are shared between projects (Preferences → *Show global file*).
 *Pin label* only changes the text shown in the Navigator; *Rename on disk...* renames the real asset.
 
 ## Asset Store builds

@@ -3,6 +3,18 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-10-29
+### Added
+- Configurable sections: each section can be shown or hidden per window kind (docked / floating) and per
+  mode (normal / compact), reordered, and laid out stacked or as tabs (⋮ menu in the window, Preferences).
+- Tools section: pin any menu item (searched through Unity Search's menu provider) or editor window type;
+  launch with one click, from the popup, or from the main-toolbar dropdown. Team or personal scope.
+- Windows section and window switcher popup (Alt+Shift+W): open editor windows with focus/docked state,
+  recently used (closed) windows, labels, and colors shown as a dot in the tab and a strip at the top.
+- Global per-user file (application-data folder) for tool pins, window marks, recent windows and layout,
+  shared by all projects on the machine; project data stays in ProjectSettings/UserSettings.
+- Shortcuts: Window Switcher (Alt+Shift+W), Pin Focused Window (Alt+Shift+K), Pin a Tool... (unbound).
+
 ## [0.3.2] - 2026-10-27
 ### Added
 - Recovery of data from legacy `ProjectNavigator.asset` files (versions up to 0.3.0) whose script

@@ -24,7 +24,7 @@ namespace ProjectNavigator
             return new SettingsProvider("Preferences/Project Navigator", SettingsScope.User)
             {
                 label = "Project Navigator",
-                keywords = new HashSet<string>(new[] { "navigator", "folder", "history", "pin", "color", "frequent", "note", "floating" }),
+                keywords = new HashSet<string>(new[] { "navigator", "folder", "history", "pin", "color", "frequent", "note", "floating", "tools", "windows", "sections", "tabs" }),
                 guiHandler = _ => DrawPreferences()
             };
         }
@@ -83,6 +83,9 @@ namespace ProjectNavigator
             if (EditorGUI.EndChangeCheck())
                 Commit(user: true);
 
+            DrawToolsPreferences();
+            DrawSectionsPreferences();
+
             EditorGUILayout.Space();
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -121,6 +124,98 @@ namespace ProjectNavigator
                 if (GUILayout.Button("GitHub", EditorStyles.miniButton, GUILayout.Width(52f)))
                     Application.OpenURL(NavigatorVersion.Repository);
                 GUILayout.FlexibleSpace();
+            }
+        }
+
+        static void DrawToolsPreferences()
+        {
+            var data = NavigatorGlobal.Data;
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Tools and windows (all projects)", EditorStyles.boldLabel);
+            EditorGUI.BeginChangeCheck();
+            data.trackWindows = EditorGUILayout.Toggle("Remember recently focused windows", data.trackWindows);
+            data.recentWindowsCount = EditorGUILayout.IntSlider("Recent windows shown", data.recentWindowsCount, 3, 30);
+            data.colorWindowTabs = EditorGUILayout.Toggle(new GUIContent("Colored windows: dot in the tab", "Replaces the tab icon of a colored window with a dot in its color"), data.colorWindowTabs);
+            data.colorWindowStrips = EditorGUILayout.Toggle(new GUIContent("Colored windows: strip at the top", "Draws a thin colored strip at the top of a colored window's content"), data.colorWindowStrips);
+            if (EditorGUI.EndChangeCheck())
+            {
+                NavigatorGlobal.MarkDirty();
+                ToolTracker.ApplyMarksNow();
+            }
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Pin a tool...", GUILayout.Width(110f))) ToolPickerWindow.Open();
+                if (GUILayout.Button("Show global file", GUILayout.Width(120f))) EditorUtility.RevealInFinder(NavigatorGlobal.FilePath);
+                if (GUILayout.Button("Clear window colors and labels", GUILayout.Width(210f)) &&
+                    EditorUtility.DisplayDialog("Project Navigator", "Remove all window colors and labels?", "Remove", "Cancel"))
+                {
+                    data.windowMarks.Clear();
+                    NavigatorGlobal.MarkDirty();
+                    ToolTracker.ApplyMarksNow();
+                    Navigator.NotifyChanged();
+                }
+            }
+            EditorGUILayout.LabelField("Tool pins, window colors, recent windows and the section layout are stored per user for all projects: " + NavigatorGlobal.FilePath, EditorStyles.wordWrappedMiniLabel);
+        }
+
+        static void DrawSectionsPreferences()
+        {
+            var data = NavigatorGlobal.Data;
+            NavigatorSections.EnsureDefaults(data.sections);
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Navigator sections", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Which sections each window shows in normal and in compact mode, and their order. Layout (stacked or tabs) is also in the window's ⋮ menu.", MessageType.None);
+
+            EditorGUI.BeginChangeCheck();
+            data.dockedLayout = (SectionLayout)EditorGUILayout.EnumPopup("Docked window layout", data.dockedLayout);
+            data.floatingLayout = (SectionLayout)EditorGUILayout.EnumPopup("Floating window layout", data.floatingLayout);
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label("", GUILayout.Width(44f));
+                GUILayout.Label("Section", EditorStyles.miniBoldLabel, GUILayout.Width(100f));
+                GUILayout.Label("Docked", EditorStyles.miniBoldLabel, GUILayout.Width(60f));
+                GUILayout.Label("Compact", EditorStyles.miniBoldLabel, GUILayout.Width(60f));
+                GUILayout.Label("Floating", EditorStyles.miniBoldLabel, GUILayout.Width(60f));
+                GUILayout.Label("Compact", EditorStyles.miniBoldLabel, GUILayout.Width(60f));
+            }
+            int move = -1, moveDelta = 0;
+            for (int i = 0; i < data.sections.Count; i++)
+            {
+                var s = data.sections[i];
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    using (new EditorGUI.DisabledScope(i == 0))
+                        if (GUILayout.Button("▲", EditorStyles.miniButtonLeft, GUILayout.Width(22f))) { move = i; moveDelta = -1; }
+                    using (new EditorGUI.DisabledScope(i == data.sections.Count - 1))
+                        if (GUILayout.Button("▼", EditorStyles.miniButtonRight, GUILayout.Width(22f))) { move = i; moveDelta = 1; }
+                    GUILayout.Label(NavigatorSections.Title(s.id), GUILayout.Width(100f));
+                    s.docked = EditorGUILayout.Toggle(s.docked, GUILayout.Width(60f));
+                    s.dockedCompact = EditorGUILayout.Toggle(s.dockedCompact, GUILayout.Width(60f));
+                    s.floating = EditorGUILayout.Toggle(s.floating, GUILayout.Width(60f));
+                    s.floatingCompact = EditorGUILayout.Toggle(s.floatingCompact, GUILayout.Width(60f));
+                }
+            }
+            bool changed = EditorGUI.EndChangeCheck();
+            if (move >= 0)
+            {
+                var item = data.sections[move];
+                data.sections.RemoveAt(move);
+                data.sections.Insert(move + moveDelta, item);
+                changed = true;
+            }
+            if (GUILayout.Button("Reset sections to defaults", GUILayout.Width(190f)))
+            {
+                data.sections.Clear();
+                NavigatorSections.EnsureDefaults(data.sections);
+                changed = true;
+            }
+            if (changed)
+            {
+                NavigatorGlobal.MarkDirty();
+                Navigator.NotifyChanged();
+                foreach (var window in Resources.FindObjectsOfTypeAll<NavigatorWindow>())
+                    window.RebuildFromSettings();
             }
         }
 
@@ -229,6 +324,27 @@ namespace ProjectNavigator
                     {
                         var target = pin;
                         s_Deferred = () => shared.pins.Remove(target);
+                    }
+                }
+            }
+
+            // ---- shared tool pins
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Pinned tools (team)", EditorStyles.boldLabel);
+            if (shared.toolPins.Count == 0)
+                EditorGUILayout.LabelField("None yet. Navigator window → Tools → Pin a tool... with \"for the whole team\" enabled.", EditorStyles.miniLabel);
+            for (int i = 0; i < shared.toolPins.Count; i++)
+            {
+                var pin = shared.toolPins[i];
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    pin.label = EditorGUILayout.TextField(pin.label, GUILayout.Width(120f));
+                    pin.group = EditorGUILayout.TextField(pin.group, GUILayout.Width(90f));
+                    EditorGUILayout.LabelField(NavigatorTools.Detail(pin));
+                    if (GUILayout.Button("X", GUILayout.Width(22f)))
+                    {
+                        var target = pin;
+                        s_Deferred = () => shared.toolPins.Remove(target);
                     }
                 }
             }

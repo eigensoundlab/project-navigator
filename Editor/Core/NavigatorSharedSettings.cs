@@ -27,6 +27,8 @@ namespace ProjectNavigator
         public List<ColorRule> rules = new List<ColorRule>();
         public List<AssetPin> pins = new List<AssetPin>();
         public List<AssetNote> notes = new List<AssetNote>();
+        /// <summary>Team-shared tool pins (a project's own editor tools); personal ones live in the global file.</summary>
+        public List<ToolPin> toolPins = new List<ToolPin>();
         public bool rulesEnabled = false;
 
         /// <summary>Stable ids for the built-in tags, so static context-menu entries can reference them.</summary>

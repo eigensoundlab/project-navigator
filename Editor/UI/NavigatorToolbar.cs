@@ -67,9 +67,25 @@ namespace ProjectNavigator
                 }
             }
 
+            foreach (var (pin, shared) in NavigatorTools.AllToolPins())
+            {
+                var tool = pin;
+                var group = string.IsNullOrEmpty(pin.group) ? "" : Sanitize(pin.group) + "/";
+                menu.AddItem(new GUIContent("Tools/" + group + Sanitize(NavigatorTools.Label(pin)) + (shared ? "  (team)" : "")), false, () => NavigatorTools.Launch(tool));
+                any = true;
+            }
+            foreach (var window in NavigatorTools.OpenWindows())
+            {
+                var target = window;
+                menu.AddItem(new GUIContent("Windows/" + Sanitize(NavigatorTools.DisplayName(window))), window.hasFocus, () => NavigatorTools.Focus(target));
+                any = true;
+            }
+
             if (any) menu.AddSeparator("");
             menu.AddItem(new GUIContent("Pin current folder"), false, () => Navigator.PinCurrentFolder(false));
-            menu.AddItem(new GUIContent("Popup at cursor (Alt+Shift+Space)"), false, NavigatorPopup.Open);
+            menu.AddItem(new GUIContent("Pin a tool..."), false, ToolPickerWindow.Open);
+            menu.AddItem(new GUIContent("Window switcher (Alt+Shift+W)"), false, () => NavigatorPopup.Open(NavigatorPopup.Mode.Windows));
+            menu.AddItem(new GUIContent("Popup at cursor (Alt+Shift+Space)"), false, () => NavigatorPopup.Open(NavigatorPopup.Mode.Navigator));
             menu.AddItem(new GUIContent("Quick jump (search)"), false, NavigatorSearchProvider.ShowQuickJump);
             menu.AddItem(new GUIContent("Open Navigator window"), false, NavigatorWindow.Open);
             menu.AddItem(new GUIContent("Open floating Navigator"), false, NavigatorWindow.OpenFloating);

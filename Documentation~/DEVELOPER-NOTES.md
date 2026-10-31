@@ -156,3 +156,20 @@ The anchor is `GUIUtility.GUIToScreenPoint(Event.current.mousePosition)` when ca
 pass, else the focused window's position plus the event mouse position, else the main window.
 Keys are handled at the top of `OnGUI` before the search field sees them. Activation closes the popup
 first and navigates in a `delayCall`, because `Navigator.Open` changes focus and selection.
+
+## Tools, windows and sections (v0.4)
+
+- `NavigatorGlobal` keeps per-user, cross-project data in `<ApplicationData>/ProjectNavigator/global.json`
+  (`JsonUtility`); saved through the same batched flush as the project files (`Navigator.MarkDirty(global: true)`).
+- `NavigatorTools`: tool pins (menu path or assembly-qualified window type), open-window listing
+  (`Resources.FindObjectsOfTypeAll<EditorWindow>()` minus the Navigator's own windows), focus-or-open with
+  cycling, window marks keyed `Type|Title|ordinal` (instance) or `Type` (by type), recent windows,
+  and menu search through `SearchService.Request("m:" + query, SearchFlags.Synchronous)`.
+- `ToolTracker`: polls `EditorWindow.focusedWindow` (0.3 s) for recent windows and re-applies window marks
+  (1 s): a generated dot texture as `titleContent.image` (original kept to restore) and a 3 px strip inserted
+  at index 0 of `rootVisualElement`. Both are public API; windows that reset their title or rebuild their
+  root get the decoration back on the next pass.
+- Sections: `NavigatorSections` (ids, titles, defaults) + `SectionSetting` rows in the global file; the window
+  re-adds foldouts in configured order, hides the foldout header in tabs mode, and remembers the active tab per
+  window kind.
+- The popup has two modes (`NavigatorPopup.Mode.Navigator` / `.Windows`); the Windows mode is the window switcher.

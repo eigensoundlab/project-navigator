@@ -12,11 +12,11 @@ using UnityEngine.UIElements;
 namespace ProjectNavigator
 {
     /// <summary>
-    /// The Navigator window: Pinned / Frequent / Recent / Recent files / Colored assets.
-    /// Folder rows: select on click, open in the Project window on double-click (or on single click,
-    /// see Preferences). File rows: select on click, open the asset on double-click.
-    /// Right-click for actions. Drop folders or files onto the window to pin them; drop assets onto
-    /// a folder row to move them into that folder.
+    /// The Navigator window. Sections: Pinned / Frequent / Recent / Recent files / Colored / Tools / Windows,
+    /// each one switchable per window kind (docked, floating) and per mode (normal, compact), shown
+    /// stacked or as tabs (⋮ menu). Folder rows: select on click, open in the Project window on
+    /// double-click (or single click, see Preferences). File rows: select on click, open on double-click.
+    /// Tool rows launch; window rows focus.
     ///
     /// Two kinds of instance: a normal (dockable) window and a floating one. The floating one is a
     /// utility window when "stay on top" is enabled, remembers its position and compact state, and
@@ -30,25 +30,35 @@ namespace ProjectNavigator
             Frequent,
             Recent,
             RecentFile,
-            Color
+            Color,
+            Tool,
+            Window,
+            RecentWindow
         }
 
         sealed class Row
         {
-            public string guid;
-            public string path;
-            public string name;
+            public RowKind kind;
             public string label;
-            public string group;
+            public string detail;
             public string note;
-            public bool isFolder;
-            public bool exists;
+            public string group;
+            public bool exists = true;
             public bool pinned;
             public bool shared;
             public bool hasColor;
             public Color color;
             public Texture icon;
-            public double score;
+            public bool tintIcon;
+            // asset rows
+            public string guid;
+            public string path;
+            public string name;
+            public bool isFolder;
+            // tool / window rows
+            public ToolPin tool;
+            public EditorWindow window;
+            public RecentWindow recent;
         }
 
         const string k_PreferencesPath = "Preferences/Project Navigator";
@@ -127,7 +137,6 @@ namespace ProjectNavigator
 
         static bool OnWantsToQuit()
         {
-            // Remember the floating window across restarts: its OnDestroy must not clear the flag.
             s_Quitting = true;
             s_QuitRequestedAt = EditorApplication.timeSinceStartup;
             foreach (var window in Resources.FindObjectsOfTypeAll<NavigatorWindow>())
@@ -139,7 +148,6 @@ namespace ProjectNavigator
 
         static void QuitFlagWatchdog()
         {
-            // If the editor is still running a few seconds after a quit request, the quit was cancelled.
             if (s_Quitting && EditorApplication.timeSinceStartup - s_QuitRequestedAt > 5.0)
                 s_Quitting = false;
         }
@@ -150,17 +158,17 @@ namespace ProjectNavigator
         ToolbarButton m_Forward;
         ToolbarToggle m_Compact;
         ToolbarSearchField m_Search;
+        ToolbarMenu m_More;
+        Toolbar m_TabBar;
         Label m_Current;
         ScrollView m_Scroll;
-        Foldout m_PinsFold;
-        Foldout m_FrequentFold;
-        Foldout m_RecentFold;
-        Foldout m_RecentFilesFold;
-        Foldout m_ColorsFold;
+        readonly Dictionary<string, Foldout> m_Sections = new Dictionary<string, Foldout>();
+        readonly List<string> m_VisibleSections = new List<string>();
 
         string m_Filter = "";
         Row m_DragRow;
         Vector2 m_DragStart;
+        double m_NextWindowsRefresh;
 
         bool Compact
         {
@@ -173,16 +181,40 @@ namespace ProjectNavigator
             }
         }
 
+        SectionLayout Layout
+        {
+            get => m_IsFloating ? NavigatorGlobal.Data.floatingLayout : NavigatorGlobal.Data.dockedLayout;
+            set
+            {
+                if (m_IsFloating) NavigatorGlobal.Data.floatingLayout = value;
+                else NavigatorGlobal.Data.dockedLayout = value;
+                NavigatorGlobal.MarkDirty();
+            }
+        }
+
+        string ActiveTab
+        {
+            get => m_IsFloating ? NavigatorGlobal.Data.floatingActiveTab : NavigatorGlobal.Data.dockedActiveTab;
+            set
+            {
+                if (m_IsFloating) NavigatorGlobal.Data.floatingActiveTab = value;
+                else NavigatorGlobal.Data.dockedActiveTab = value;
+                NavigatorGlobal.MarkDirty();
+            }
+        }
+
         // ------------------------------------------------------------------ lifecycle
 
         void OnEnable()
         {
             Navigator.Changed += OnNavigatorChanged;
+            EditorApplication.update += PeriodicRefresh;
         }
 
         void OnDisable()
         {
             Navigator.Changed -= OnNavigatorChanged;
+            EditorApplication.update -= PeriodicRefresh;
             if (m_IsFloating)
             {
                 NavigatorUserState.instance.floatingRect = position;
@@ -192,7 +224,6 @@ namespace ProjectNavigator
 
         void OnDestroy()
         {
-            // Fires on a real close (not on domain reload). Skip during quit so the window comes back next time.
             if (m_IsFloating && !s_Quitting)
             {
                 NavigatorUserState.instance.floatingWasOpen = false;
@@ -202,7 +233,17 @@ namespace ProjectNavigator
 
         void OnNavigatorChanged()
         {
-            if (m_PinsFold != null) Refresh();
+            if (m_Scroll != null) Refresh();
+        }
+
+        /// <summary>The Windows section mirrors live editor state (focus, open/closed), so it refreshes on its own.</summary>
+        void PeriodicRefresh()
+        {
+            if (m_Scroll == null || !m_VisibleSections.Contains(NavigatorSections.Windows)) return;
+            double now = EditorApplication.timeSinceStartup;
+            if (now < m_NextWindowsRefresh) return;
+            m_NextWindowsRefresh = now + 2.0;
+            FillWindows();
         }
 
         public void CreateGUI()
@@ -213,6 +254,10 @@ namespace ProjectNavigator
             LoadStyles(root);
 
             BuildToolbar(root);
+
+            m_TabBar = new Toolbar();
+            m_TabBar.AddToClassList("pn-tabs");
+            root.Add(m_TabBar);
 
             m_Current = new Label();
             m_Current.AddToClassList("pn-current");
@@ -227,19 +272,17 @@ namespace ProjectNavigator
             m_Scroll.style.flexGrow = 1;
             root.Add(m_Scroll);
 
-            m_PinsFold = MakeFoldout("Pinned", true);
-            m_FrequentFold = MakeFoldout("Frequent", true);
-            m_RecentFold = MakeFoldout("Recent", true);
-            m_RecentFilesFold = MakeFoldout("Recent files", true);
-            m_ColorsFold = MakeFoldout("Colored", false);
-            m_Scroll.Add(m_PinsFold);
-            m_Scroll.Add(m_FrequentFold);
-            m_Scroll.Add(m_RecentFold);
-            m_Scroll.Add(m_RecentFilesFold);
-            m_Scroll.Add(m_ColorsFold);
+            m_Sections.Clear();
+            foreach (var id in NavigatorSections.All)
+            {
+                var foldout = new Foldout { text = NavigatorSections.Title(id), value = id != NavigatorSections.Colored };
+                foldout.AddToClassList("pn-fold");
+                m_Sections[id] = foldout;
+                m_Scroll.Add(foldout);
+            }
 
             SetupPinDropTarget(root);
-            ApplyCompact(Compact);
+            RebuildLayout();
             Refresh();
         }
 
@@ -256,13 +299,6 @@ namespace ProjectNavigator
                 root.styleSheets.Add(sheet);
                 return;
             }
-        }
-
-        static Foldout MakeFoldout(string text, bool open)
-        {
-            var foldout = new Foldout { text = text, value = open };
-            foldout.AddToClassList("pn-fold");
-            return foldout;
         }
 
         void BuildToolbar(VisualElement root)
@@ -294,21 +330,48 @@ namespace ProjectNavigator
             });
             toolbar.Add(m_Search);
 
-            m_Compact = Padded(new ToolbarToggle { text = "Compact", tooltip = "Show only the pinned list" });
+            m_Compact = Padded(new ToolbarToggle { text = "Compact", tooltip = "Show only the sections chosen for compact mode (⋮ menu)" });
             m_Compact.SetValueWithoutNotify(Compact);
             m_Compact.RegisterValueChangedCallback(evt =>
             {
                 Compact = evt.newValue;
-                ApplyCompact(evt.newValue);
+                RebuildLayout();
+                Refresh();
             });
             toolbar.Add(m_Compact);
 
             if (!m_IsFloating)
                 toolbar.Add(Padded(new ToolbarButton(OpenFloating) { text = "Float", tooltip = "Open a floating copy (stays on top when enabled in preferences)" }));
 
-            toolbar.Add(Padded(new ToolbarButton(() => SettingsService.OpenUserPreferences(k_PreferencesPath)) { text = "Prefs", tooltip = "Open preferences (Project Navigator " + NavigatorVersion.Current + ")" }));
+            m_More = new ToolbarMenu { text = "⋮", tooltip = "Layout, sections, preferences (Project Navigator " + NavigatorVersion.Current + ")" };
+            m_More.style.flexShrink = 0;
+            m_More.style.paddingLeft = 4;
+            m_More.style.paddingRight = 4;
+            m_More.menu.AppendAction("Layout/Stacked sections", _ => { Layout = SectionLayout.Stacked; RebuildLayout(); Refresh(); },
+                _ => Layout == SectionLayout.Stacked ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+            m_More.menu.AppendAction("Layout/Tabs", _ => { Layout = SectionLayout.Tabs; RebuildLayout(); Refresh(); },
+                _ => Layout == SectionLayout.Tabs ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+            foreach (var id in NavigatorSections.All)
+            {
+                var sectionId = id;
+                m_More.menu.AppendAction("Sections/" + NavigatorSections.Title(id), _ =>
+                {
+                    var setting = Setting(sectionId);
+                    NavigatorSections.SetVisible(setting, m_IsFloating, Compact, !NavigatorSections.IsVisible(setting, m_IsFloating, Compact));
+                    NavigatorGlobal.MarkDirty();
+                    RebuildLayout();
+                    Refresh();
+                }, _ => NavigatorSections.IsVisible(Setting(sectionId), m_IsFloating, Compact) ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
+            }
+            m_More.menu.AppendAction("Sections/Order and defaults...", _ => SettingsService.OpenUserPreferences(k_PreferencesPath));
+            m_More.menu.AppendSeparator();
+            m_More.menu.AppendAction("Pin a tool...", _ => ToolPickerWindow.Open());
+            m_More.menu.AppendAction("Window switcher (Alt+Shift+W)", _ => NavigatorPopup.Open(NavigatorPopup.Mode.Windows));
+            m_More.menu.AppendSeparator();
+            m_More.menu.AppendAction("Preferences...", _ => SettingsService.OpenUserPreferences(k_PreferencesPath));
+            m_More.menu.AppendAction("Team settings (tags, rules)...", _ => SettingsService.OpenProjectSettings(k_ProjectSettingsPath));
+            toolbar.Add(m_More);
 
-            // A gap at the right edge, so the last button never touches the window border.
             var spacer = new VisualElement();
             spacer.style.width = 2;
             toolbar.Add(spacer);
@@ -316,7 +379,6 @@ namespace ProjectNavigator
             root.Add(toolbar);
         }
 
-        /// <summary>Text buttons get symmetric padding and never shrink; the search field yields instead.</summary>
         static T Padded<T>(T element) where T : VisualElement
         {
             element.style.paddingLeft = 8;
@@ -335,15 +397,96 @@ namespace ProjectNavigator
             return element;
         }
 
-        void ApplyCompact(bool compact)
+        SectionSetting Setting(string id)
         {
-            var display = compact ? DisplayStyle.None : DisplayStyle.Flex;
-            if (m_FrequentFold != null) m_FrequentFold.style.display = display;
-            if (m_RecentFold != null) m_RecentFold.style.display = display;
-            if (m_ColorsFold != null) m_ColorsFold.style.display = display;
-            if (m_RecentFilesFold != null)
-                m_RecentFilesFold.style.display = compact || !NavigatorUserState.instance.trackFiles ? DisplayStyle.None : DisplayStyle.Flex;
+            var list = NavigatorGlobal.Data.sections;
+            var setting = list.Find(s => s.id == id);
+            if (setting == null)
+            {
+                setting = NavigatorSections.Default(id);
+                list.Add(setting);
+            }
+            return setting;
+        }
+
+        /// <summary>Called from Preferences after the section configuration changed.</summary>
+        public void RebuildFromSettings()
+        {
+            if (m_Scroll == null) return;
+            RebuildLayout();
+            Refresh();
+        }
+
+        /// <summary>Applies section order, visibility for the current mode, and stacked/tabs layout.</summary>
+        void RebuildLayout()
+        {
+            var data = NavigatorGlobal.Data;
+            NavigatorSections.EnsureDefaults(data.sections);
+            bool compact = Compact;
+            bool trackFiles = NavigatorUserState.instance.trackFiles;
+
+            m_VisibleSections.Clear();
+            foreach (var setting in data.sections)
+            {
+                if (!m_Sections.TryGetValue(setting.id, out var foldout)) continue;
+                foldout.RemoveFromHierarchy();
+                m_Scroll.Add(foldout); // appended in configured order
+                bool visible = NavigatorSections.IsVisible(setting, m_IsFloating, compact);
+                if (setting.id == NavigatorSections.RecentFiles && !trackFiles) visible = false;
+                if (visible) m_VisibleSections.Add(setting.id);
+                foldout.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+
+            bool tabs = Layout == SectionLayout.Tabs && m_VisibleSections.Count > 1;
+            m_TabBar.Clear();
+            m_TabBar.style.display = tabs ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (tabs)
+            {
+                var active = ActiveTab;
+                if (!m_VisibleSections.Contains(active)) active = m_VisibleSections[0];
+                foreach (var id in m_VisibleSections)
+                {
+                    var sectionId = id;
+                    var toggle = new ToolbarToggle { text = NavigatorSections.Title(id) };
+                    toggle.style.flexShrink = 1;
+                    toggle.style.paddingLeft = 6;
+                    toggle.style.paddingRight = 6;
+                    toggle.SetValueWithoutNotify(id == active);
+                    toggle.RegisterValueChangedCallback(evt =>
+                    {
+                        if (!evt.newValue)
+                        {
+                            toggle.SetValueWithoutNotify(true); // the active tab cannot be unselected
+                            return;
+                        }
+                        ActiveTab = sectionId;
+                        RebuildLayout();
+                        Refresh();
+                    });
+                    m_TabBar.Add(toggle);
+                }
+                foreach (var id in m_VisibleSections)
+                {
+                    var foldout = m_Sections[id];
+                    foldout.style.display = id == active ? DisplayStyle.Flex : DisplayStyle.None;
+                    foldout.value = true;
+                    HideFoldoutHeader(foldout, true);
+                }
+            }
+            else
+            {
+                foreach (var id in m_VisibleSections)
+                    HideFoldoutHeader(m_Sections[id], false);
+            }
+
             minSize = compact ? new Vector2(200f, 80f) : new Vector2(260f, 200f);
+        }
+
+        static void HideFoldoutHeader(Foldout foldout, bool hide)
+        {
+            var toggle = foldout.Q<Toggle>();
+            if (toggle != null) toggle.style.display = hide ? DisplayStyle.None : DisplayStyle.Flex;
         }
 
         void SetupPinDropTarget(VisualElement root)
@@ -363,7 +506,6 @@ namespace ProjectNavigator
             });
         }
 
-        /// <summary>Asset paths in the current drag. Without <paramref name="foldersToo"/> only movable files under Assets/.</summary>
         static List<string> DraggedAssetPaths(bool foldersToo)
         {
             var paths = DragAndDrop.paths ?? Array.Empty<string>();
@@ -391,57 +533,71 @@ namespace ProjectNavigator
             m_Current.text = currentInfo.Exists ? currentInfo.path : "—";
             m_Current.tooltip = m_Current.text;
 
-            FillSection(m_PinsFold, "Pinned", BuildPinRows(), RowKind.Pin,
-                "Drop folders or files here, or right-click an asset → Project Navigator → Pin.");
-            FillSection(m_FrequentFold, "Frequent", BuildFrequentRows(user.frequentCount), RowKind.Frequent,
-                "Folders you use most will show up here.");
-            FillSection(m_RecentFold, "Recent", BuildRecentRows(user.recentCount), RowKind.Recent,
-                "Nothing visited yet.");
-            FillSection(m_RecentFilesFold, "Recent files", BuildRecentFileRows(user.recentFilesCount), RowKind.RecentFile,
-                "Files you select will show up here.");
-            m_RecentFilesFold.style.display = Compact || !user.trackFiles ? DisplayStyle.None : DisplayStyle.Flex;
-            FillColors();
+            if (Visible(NavigatorSections.Pinned))
+                FillSection(NavigatorSections.Pinned, BuildPinRows(), "Drop folders or files here, or right-click an asset → Project Navigator → Pin.");
+            if (Visible(NavigatorSections.Frequent))
+                FillSection(NavigatorSections.Frequent, BuildFrequentRows(user.frequentCount), "Folders you use most will show up here.");
+            if (Visible(NavigatorSections.Recent))
+                FillSection(NavigatorSections.Recent, BuildRecentRows(user.recentCount), "Nothing visited yet.");
+            if (Visible(NavigatorSections.RecentFiles))
+                FillSection(NavigatorSections.RecentFiles, BuildRecentFileRows(user.recentFilesCount), "Files you select will show up here.");
+            if (Visible(NavigatorSections.Colored))
+                FillColors();
+            if (Visible(NavigatorSections.Tools))
+                FillTools();
+            if (Visible(NavigatorSections.Windows))
+                FillWindows();
         }
 
-        void FillSection(Foldout foldout, string title, List<Row> rows, RowKind kind, string emptyText)
+        bool Visible(string id)
         {
+            return m_VisibleSections.Contains(id) && m_Sections[id].style.display != DisplayStyle.None;
+        }
+
+        void FillSection(string id, List<Row> rows, string emptyText)
+        {
+            var foldout = m_Sections[id];
             foldout.Clear();
             int shown = 0;
             foreach (var row in rows)
             {
                 if (!PassesFilter(row)) continue;
-                foldout.Add(MakeRow(row, kind));
+                foldout.Add(MakeRow(row));
                 shown++;
             }
-            if (shown == 0)
-            {
-                var empty = new Label(emptyText);
-                empty.AddToClassList("pn-empty");
-                empty.style.opacity = 0.6f;
-                empty.style.whiteSpace = WhiteSpace.Normal;
-                empty.style.paddingLeft = 8;
-                empty.style.paddingBottom = 4;
-                foldout.Add(empty);
-            }
-            foldout.text = $"{title} ({shown})";
+            if (shown == 0) foldout.Add(MakeEmpty(emptyText));
+            foldout.text = $"{NavigatorSections.Title(id)} ({shown})";
+        }
+
+        static Label MakeEmpty(string text)
+        {
+            var empty = new Label(text);
+            empty.AddToClassList("pn-empty");
+            empty.style.opacity = 0.6f;
+            empty.style.whiteSpace = WhiteSpace.Normal;
+            empty.style.paddingLeft = 8;
+            empty.style.paddingBottom = 4;
+            return empty;
         }
 
         bool PassesFilter(Row row)
         {
             if (string.IsNullOrEmpty(m_Filter)) return true;
-            var label = string.IsNullOrEmpty(row.label) ? row.name : row.label;
-            return FuzzyMatcher.Score(m_Filter, label) >= 0
+            return FuzzyMatcher.Score(m_Filter, row.label ?? "") >= 0
+                || FuzzyMatcher.Score(m_Filter, row.detail ?? "") >= 0
                 || FuzzyMatcher.Score(m_Filter, row.path ?? "") >= 0
                 || (!string.IsNullOrEmpty(row.note) && FuzzyMatcher.Score(m_Filter, row.note) >= 0);
         }
+
+        // ------------------------------------------------------------------ row data
 
         List<Row> BuildPinRows()
         {
             var rows = new List<Row>();
             foreach (var (pin, shared) in Navigator.AllPins())
             {
-                var row = MakeRowData(Navigator.GetInfo(pin.guid), shared, 0);
-                row.label = pin.label;
+                var row = MakeAssetRow(Navigator.GetInfo(pin.guid), RowKind.Pin, shared);
+                if (!string.IsNullOrEmpty(pin.label)) row.label = pin.label;
                 row.group = pin.group;
                 rows.Add(row);
             }
@@ -450,30 +606,32 @@ namespace ProjectNavigator
 
         List<Row> BuildFrequentRows(int max)
         {
-            return Navigator.Frequent(max).Select(t => MakeRowData(t.info, false, t.score)).ToList();
+            return Navigator.Frequent(max).Select(t => MakeAssetRow(t.info, RowKind.Frequent, false)).ToList();
         }
 
         List<Row> BuildRecentRows(int max)
         {
-            return Navigator.Recent(max).Select(info => MakeRowData(info, false, 0)).ToList();
+            return Navigator.Recent(max).Select(info => MakeAssetRow(info, RowKind.Recent, false)).ToList();
         }
 
         List<Row> BuildRecentFileRows(int max)
         {
-            return Navigator.RecentFiles(max).Select(info => MakeRowData(info, false, 0)).ToList();
+            return Navigator.RecentFiles(max).Select(info => MakeAssetRow(info, RowKind.RecentFile, false)).ToList();
         }
 
-        static Row MakeRowData(AssetInfo info, bool shared, double score)
+        static Row MakeAssetRow(AssetInfo info, RowKind kind, bool shared)
         {
             var row = new Row
             {
+                kind = kind,
                 guid = info.guid,
                 path = info.path,
                 name = info.name,
+                label = info.name,
+                detail = info.Exists ? Navigator.ParentOf(info.path) : "",
                 isFolder = info.isFolder,
                 exists = info.Exists,
                 shared = shared,
-                score = score,
                 pinned = Navigator.IsPinned(info.guid),
                 note = Navigator.GetNote(info.guid)
             };
@@ -483,15 +641,63 @@ namespace ProjectNavigator
                 {
                     row.hasColor = true;
                     row.color = style.color;
+                    row.tintIcon = info.isFolder;
                 }
                 row.icon = AssetDatabase.GetCachedIcon(info.path);
             }
             return row;
         }
 
+        static Row MakeToolRow(ToolPin pin, bool shared)
+        {
+            return new Row
+            {
+                kind = RowKind.Tool,
+                tool = pin,
+                shared = shared,
+                label = NavigatorTools.Label(pin),
+                detail = NavigatorTools.Detail(pin),
+                group = pin.group,
+                pinned = true,
+                hasColor = pin.hasColor,
+                color = pin.color,
+                icon = NavigatorTools.Icon(pin)
+            };
+        }
+
+        static Row MakeWindowRow(EditorWindow window)
+        {
+            var mark = NavigatorTools.FindMark(window);
+            var type = window.GetType();
+            return new Row
+            {
+                kind = RowKind.Window,
+                window = window,
+                label = NavigatorTools.DisplayName(window),
+                detail = type.Name + (window.docked ? " · docked" : " · floating") + (window.hasFocus ? " · focused" : ""),
+                note = mark != null && !string.IsNullOrEmpty(mark.label) ? window.titleContent.text : "",
+                pinned = NavigatorTools.IsWindowTypePinned(type),
+                hasColor = mark != null && mark.hasColor,
+                color = mark != null ? mark.color : Color.white,
+                icon = ToolTracker.OriginalIcon(window)
+            };
+        }
+
+        static Row MakeRecentWindowRow(RecentWindow recent)
+        {
+            return new Row
+            {
+                kind = RowKind.RecentWindow,
+                recent = recent,
+                label = recent.title,
+                detail = NavigatorTools.ShortTypeName(recent.windowType) + " · closed",
+                icon = EditorGUIUtility.FindTexture("_Popup")
+            };
+        }
+
         // ------------------------------------------------------------------ rows
 
-        VisualElement MakeRow(Row row, RowKind kind)
+        VisualElement MakeRow(Row row)
         {
             var element = new VisualElement();
             element.AddToClassList("pn-row");
@@ -501,9 +707,9 @@ namespace ProjectNavigator
             element.style.paddingLeft = 4;
             element.style.paddingRight = 6;
             element.userData = row;
-            element.tooltip = row.exists
-                ? (string.IsNullOrEmpty(row.note) ? row.path : row.path + "\n" + row.note)
-                : "Missing asset (GUID " + row.guid + ")";
+            element.tooltip = row.path != null
+                ? (row.exists ? (string.IsNullOrEmpty(row.note) ? row.path : row.path + "\n" + row.note) : "Missing asset (GUID " + row.guid + ")")
+                : row.detail;
             if (!row.exists) element.style.opacity = 0.45f;
 
             var swatch = new VisualElement();
@@ -520,17 +726,17 @@ namespace ProjectNavigator
             icon.style.height = 16;
             icon.style.marginRight = 4;
             icon.style.flexShrink = 0;
-            if (row.hasColor && row.isFolder) icon.tintColor = row.color;
+            if (row.hasColor && row.tintIcon) icon.tintColor = row.color;
             element.Add(icon);
 
-            var name = new Label(string.IsNullOrEmpty(row.label) ? row.name : row.label);
+            var name = new Label(row.label);
             name.AddToClassList("pn-name");
             name.style.flexShrink = 0;
             element.Add(name);
 
             if (!string.IsNullOrEmpty(row.group)) element.Add(MakeChip(row.group));
             if (row.shared) element.Add(MakeChip("team"));
-            if (kind != RowKind.Pin && row.pinned) element.Add(MakeChip("pinned"));
+            if (row.kind != RowKind.Pin && row.kind != RowKind.Tool && row.pinned) element.Add(MakeChip("pinned"));
 
             if (!string.IsNullOrEmpty(row.note))
             {
@@ -548,70 +754,93 @@ namespace ProjectNavigator
                 element.Add(note);
             }
 
-            var path = new Label(row.exists ? Navigator.ParentOf(row.path) : "");
-            path.AddToClassList("pn-path");
-            path.style.flexGrow = 1;
-            path.style.flexShrink = 1;
-            path.style.marginLeft = 8;
-            path.style.opacity = 0.55f;
-            path.style.fontSize = 10;
-            path.style.unityTextAlign = TextAnchor.MiddleRight;
-            path.style.overflow = Overflow.Hidden;
-            path.style.whiteSpace = WhiteSpace.NoWrap;
-            path.style.textOverflow = TextOverflow.Ellipsis;
-            element.Add(path);
+            var detail = new Label(row.detail ?? "");
+            detail.AddToClassList("pn-path");
+            detail.style.flexGrow = 1;
+            detail.style.flexShrink = 1;
+            detail.style.marginLeft = 8;
+            detail.style.opacity = 0.55f;
+            detail.style.fontSize = 10;
+            detail.style.unityTextAlign = TextAnchor.MiddleRight;
+            detail.style.overflow = Overflow.Hidden;
+            detail.style.whiteSpace = WhiteSpace.NoWrap;
+            detail.style.textOverflow = TextOverflow.Ellipsis;
+            element.Add(detail);
 
             element.RegisterCallback<ClickEvent>(evt =>
             {
                 if (evt.button != 0 || !row.exists) return;
-                if (row.isFolder)
+                Activate(row, evt.clickCount >= 2);
+            });
+
+            element.AddManipulator(new ContextualMenuManipulator(evt => BuildRowMenu(evt.menu, row)));
+
+            if (row.path != null)
+            {
+                // Drag the asset out (into object fields, the Hierarchy, another Project window, ...).
+                element.RegisterCallback<PointerDownEvent>(evt =>
                 {
-                    bool openNow = NavigatorUserState.instance.folderClickAction == FolderClickAction.SingleClickOpens || evt.clickCount >= 2;
-                    if (openNow) Navigator.Open(row.guid);
-                    else Navigator.SelectAndPing(row.guid);
+                    if (evt.button != 0 || !row.exists) return;
+                    m_DragRow = row;
+                    m_DragStart = evt.position;
+                });
+                element.RegisterCallback<PointerMoveEvent>(evt =>
+                {
+                    if (m_DragRow != row || (evt.pressedButtons & 1) == 0) return;
+                    if (Vector2.Distance((Vector2)evt.position, m_DragStart) < k_DragThreshold) return;
+                    m_DragRow = null;
+                    StartDrag(row);
+                });
+                element.RegisterCallback<PointerUpEvent>(evt => m_DragRow = null);
+
+                // Drop assets onto a folder row to move them into that folder.
+                if (row.exists && row.isFolder)
+                {
+                    element.RegisterCallback<DragUpdatedEvent>(evt =>
+                    {
+                        if (DraggedAssetPaths(foldersToo: false).Count == 0) return;
+                        DragAndDrop.visualMode = DragAndDropVisualMode.Move;
+                        evt.StopPropagation();
+                    });
+                    element.RegisterCallback<DragPerformEvent>(evt =>
+                    {
+                        var assets = DraggedAssetPaths(foldersToo: false);
+                        if (assets.Count == 0) return;
+                        DragAndDrop.AcceptDrag();
+                        evt.StopPropagation();
+                        MoveAssetsInto(assets, row.path);
+                    });
                 }
-                else if (evt.clickCount >= 2) Navigator.OpenAsset(row.guid);
-                else Navigator.SelectAndPing(row.guid);
-            });
-
-            element.AddManipulator(new ContextualMenuManipulator(evt => BuildRowMenu(evt.menu, row, kind)));
-
-            // Drag the asset out (into object fields, the Hierarchy, another Project window, ...).
-            element.RegisterCallback<PointerDownEvent>(evt =>
-            {
-                if (evt.button != 0 || !row.exists) return;
-                m_DragRow = row;
-                m_DragStart = evt.position;
-            });
-            element.RegisterCallback<PointerMoveEvent>(evt =>
-            {
-                if (m_DragRow != row || (evt.pressedButtons & 1) == 0) return;
-                if (Vector2.Distance((Vector2)evt.position, m_DragStart) < k_DragThreshold) return;
-                m_DragRow = null;
-                StartDrag(row);
-            });
-            element.RegisterCallback<PointerUpEvent>(evt => m_DragRow = null);
-
-            // Drop assets onto a folder row to move them into that folder.
-            if (row.exists && row.isFolder)
-            {
-                element.RegisterCallback<DragUpdatedEvent>(evt =>
-                {
-                    if (DraggedAssetPaths(foldersToo: false).Count == 0) return;
-                    DragAndDrop.visualMode = DragAndDropVisualMode.Move;
-                    evt.StopPropagation();
-                });
-                element.RegisterCallback<DragPerformEvent>(evt =>
-                {
-                    var assets = DraggedAssetPaths(foldersToo: false);
-                    if (assets.Count == 0) return;
-                    DragAndDrop.AcceptDrag();
-                    evt.StopPropagation();
-                    MoveAssetsInto(assets, row.path);
-                });
             }
 
             return element;
+        }
+
+        void Activate(Row row, bool doubleClick)
+        {
+            switch (row.kind)
+            {
+                case RowKind.Tool:
+                    NavigatorTools.Launch(row.tool);
+                    break;
+                case RowKind.Window:
+                    NavigatorTools.Focus(row.window);
+                    break;
+                case RowKind.RecentWindow:
+                    var type = NavigatorTools.ResolveType(row.recent.windowType);
+                    if (type != null) NavigatorTools.FocusOrOpen(type);
+                    break;
+                default:
+                    if (row.isFolder)
+                    {
+                        bool openNow = NavigatorUserState.instance.folderClickAction == FolderClickAction.SingleClickOpens || doubleClick;
+                        if (openNow) Navigator.Open(row.guid);
+                        else Navigator.SelectAndPing(row.guid);
+                    }
+                    else if (doubleClick) Navigator.OpenAsset(row.guid);
+                    else Navigator.SelectAndPing(row.guid);
+                    break;
+            }
         }
 
         static Label MakeChip(string text)
@@ -666,7 +895,28 @@ namespace ProjectNavigator
             }
         }
 
-        void BuildRowMenu(DropdownMenu menu, Row row, RowKind kind)
+        // ------------------------------------------------------------------ context menus
+
+        void BuildRowMenu(DropdownMenu menu, Row row)
+        {
+            switch (row.kind)
+            {
+                case RowKind.Tool: BuildToolMenu(menu, row); return;
+                case RowKind.Window: BuildWindowMenu(menu, row); return;
+                case RowKind.RecentWindow:
+                    menu.AppendAction("Open", _ => Activate(row, false));
+                    menu.AppendAction("Pin window type", _ =>
+                    {
+                        var type = NavigatorTools.ResolveType(row.recent.windowType);
+                        if (type != null) NavigatorTools.PinWindowType(type, false);
+                    });
+                    menu.AppendAction("Forget", _ => NavigatorTools.ForgetRecent(row.recent));
+                    return;
+            }
+            BuildAssetMenu(menu, row);
+        }
+
+        void BuildAssetMenu(DropdownMenu menu, Row row)
         {
             var shared = NavigatorSharedSettings.instance;
             var user = NavigatorUserState.instance;
@@ -698,9 +948,10 @@ namespace ProjectNavigator
                 menu.AppendAction("Pin (team)", _ => Navigator.Pin(row.guid, true));
             }
 
-            if (kind == RowKind.Pin)
+            if (row.kind == RowKind.Pin)
             {
-                menu.AppendAction("Pin label... (display only)", _ => TextPromptWindow.Prompt("Pin label", "Label", row.label, v => Navigator.SetPinLabel(row.guid, v)));
+                var pin = Navigator.FindPin(row.guid, out _);
+                menu.AppendAction("Pin label... (display only)", _ => TextPromptWindow.Prompt("Pin label", "Label", pin?.label, v => Navigator.SetPinLabel(row.guid, v)));
                 menu.AppendAction("Pin group...", _ => TextPromptWindow.Prompt("Pin group", "Group", row.group, v => Navigator.SetPinGroup(row.guid, v)));
                 menu.AppendAction("Move up", _ => Navigator.MovePin(row.guid, -1));
                 menu.AppendAction("Move down", _ => Navigator.MovePin(row.guid, 1));
@@ -736,18 +987,61 @@ namespace ProjectNavigator
                 }));
             }
 
-            if (kind == RowKind.Frequent || kind == RowKind.Recent || kind == RowKind.RecentFile)
+            if (row.kind == RowKind.Frequent || row.kind == RowKind.Recent || row.kind == RowKind.RecentFile)
             {
                 menu.AppendSeparator();
                 menu.AppendAction("Forget this entry", _ => Navigator.Forget(row.guid));
             }
         }
 
-        // ------------------------------------------------------------------ colored assets section
+        void BuildToolMenu(DropdownMenu menu, Row row)
+        {
+            var pin = row.tool;
+            menu.AppendAction("Launch", _ => NavigatorTools.Launch(pin));
+            if (pin.kind == ToolPinKind.MenuItem)
+                menu.AppendAction("Copy menu path", _ => EditorGUIUtility.systemCopyBuffer = pin.menuPath);
+            menu.AppendSeparator();
+            menu.AppendAction("Label...", _ => TextPromptWindow.Prompt("Tool label", "Label", pin.label, v => NavigatorTools.SetToolLabel(pin.id, v)));
+            menu.AppendAction("Group...", _ => TextPromptWindow.Prompt("Tool group", "Group", pin.group, v => NavigatorTools.SetToolGroup(pin.id, v)));
+            menu.AppendAction("Color...", _ => ColorPromptWindow.Prompt("Tool color", pin.hasColor ? pin.color : NavigatorTools.PresetColor(2), c => NavigatorTools.SetToolColor(pin.id, c)));
+            menu.AppendAction("Move up", _ => NavigatorTools.MoveToolPin(pin.id, -1));
+            menu.AppendAction("Move down", _ => NavigatorTools.MoveToolPin(pin.id, 1));
+            menu.AppendSeparator();
+            menu.AppendAction("Unpin", _ => NavigatorTools.UnpinTool(pin.id));
+        }
+
+        void BuildWindowMenu(DropdownMenu menu, Row row)
+        {
+            var window = row.window;
+            if (window == null) return;
+            var type = window.GetType();
+            menu.AppendAction("Focus", _ => NavigatorTools.Focus(window));
+            menu.AppendAction(row.pinned ? "Unpin window type" : "Pin window type", _ =>
+            {
+                if (row.pinned)
+                {
+                    var pin = NavigatorTools.AllToolPins().FirstOrDefault(t => t.pin.kind == ToolPinKind.Window && t.pin.windowType == NavigatorTools.TypeKey(type)).pin;
+                    if (pin != null) NavigatorTools.UnpinTool(pin.id);
+                }
+                else NavigatorTools.PinWindowType(type, false);
+            });
+            menu.AppendSeparator();
+            var mark = NavigatorTools.FindMark(window);
+            menu.AppendAction("Label...", _ => TextPromptWindow.Prompt("Window label", "Label", mark?.label, v => NavigatorTools.SetWindowLabel(window, v)));
+            menu.AppendAction("Color this window...", _ => ColorPromptWindow.Prompt("Window color", mark != null && mark.hasColor ? mark.color : NavigatorTools.PresetColor(2), c => NavigatorTools.SetWindowColor(window, false, c)));
+            menu.AppendAction("Color all " + type.Name + " windows...", _ => ColorPromptWindow.Prompt("Window type color", mark != null && mark.hasColor ? mark.color : NavigatorTools.PresetColor(2), c => NavigatorTools.SetWindowColor(window, true, c)));
+            if (mark != null && mark.hasColor)
+                menu.AppendAction("Clear color", _ => NavigatorTools.SetWindowColor(window, mark.byType, null));
+            menu.AppendSeparator();
+            menu.AppendAction("Close window", _ => window.Close());
+        }
+
+        // ------------------------------------------------------------------ sections with their own layout
 
         void FillColors()
         {
-            m_ColorsFold.Clear();
+            var foldout = m_Sections[NavigatorSections.Colored];
+            foldout.Clear();
             var shared = NavigatorSharedSettings.instance;
             var user = NavigatorUserState.instance;
 
@@ -760,50 +1054,105 @@ namespace ProjectNavigator
             {
                 var tag = shared.FindTag(group.Key);
                 string title = tag != null ? tag.name : (string.IsNullOrEmpty(group.Key) ? "None (blocked)" : "Unknown tag");
-
-                var header = new VisualElement();
-                header.AddToClassList("pn-tagheader");
-                header.style.flexDirection = FlexDirection.Row;
-                header.style.alignItems = Align.Center;
-                header.style.marginTop = 6;
-                header.style.marginBottom = 2;
-                var swatch = new VisualElement();
-                swatch.style.width = 10;
-                swatch.style.height = 10;
-                swatch.style.marginLeft = 4;
-                swatch.style.marginRight = 6;
-                swatch.style.backgroundColor = tag != null ? tag.color : new Color(0.5f, 0.5f, 0.5f, 0.4f);
-                header.Add(swatch);
-                var headerLabel = new Label(title);
-                headerLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-                header.Add(headerLabel);
-                m_ColorsFold.Add(header);
+                foldout.Add(MakeGroupHeader(title, tag != null ? tag.color : new Color(0.5f, 0.5f, 0.5f, 0.4f)));
 
                 foreach (var entry in group)
                 {
-                    var row = MakeRowData(Navigator.GetInfo(entry.fc.guid), entry.isShared, 0);
+                    var row = MakeAssetRow(Navigator.GetInfo(entry.fc.guid), RowKind.Color, entry.isShared);
                     if (!PassesFilter(row)) continue;
-                    m_ColorsFold.Add(MakeRow(row, RowKind.Color));
+                    foldout.Add(MakeRow(row));
                     shown++;
                 }
             }
 
-            if (shown == 0)
-            {
-                var empty = new Label("No colored assets yet. Right-click a folder or file → Project Navigator → Color.");
-                empty.style.opacity = 0.6f;
-                empty.style.whiteSpace = WhiteSpace.Normal;
-                empty.style.paddingLeft = 8;
-                m_ColorsFold.Add(empty);
-            }
+            if (shown == 0) foldout.Add(MakeEmpty("No colored assets yet. Right-click a folder or file → Project Navigator → Color."));
 
             var manage = new Button(() => SettingsService.OpenProjectSettings(k_ProjectSettingsPath)) { text = "Manage tags & rules..." };
             manage.style.alignSelf = Align.FlexStart;
             manage.style.marginTop = 6;
             manage.style.marginLeft = 4;
-            m_ColorsFold.Add(manage);
+            foldout.Add(manage);
 
-            m_ColorsFold.text = $"Colored ({shown})";
+            foldout.text = $"Colored ({shown})";
+        }
+
+        void FillTools()
+        {
+            var foldout = m_Sections[NavigatorSections.Tools];
+            foldout.Clear();
+            int shown = 0;
+            string lastGroup = null;
+            foreach (var (pin, shared) in NavigatorTools.AllToolPins().OrderBy(t => t.pin.group ?? "", StringComparer.OrdinalIgnoreCase))
+            {
+                var row = MakeToolRow(pin, shared);
+                if (!PassesFilter(row)) continue;
+                var group = pin.group ?? "";
+                if (group.Length > 0 && group != lastGroup)
+                    foldout.Add(MakeGroupHeader(group, null));
+                lastGroup = group;
+                row.group = ""; // shown as a header instead of a chip here
+                foldout.Add(MakeRow(row));
+                shown++;
+            }
+            if (shown == 0) foldout.Add(MakeEmpty("Pin editor windows and menu items for one-click access. Any Unity menu item works."));
+
+            var add = new Button(ToolPickerWindow.Open) { text = "Pin a tool...", tooltip = "Search all menu items and open windows" };
+            add.style.alignSelf = Align.FlexStart;
+            add.style.marginTop = 6;
+            add.style.marginLeft = 4;
+            foldout.Add(add);
+
+            foldout.text = $"Tools ({shown})";
+        }
+
+        void FillWindows()
+        {
+            var foldout = m_Sections[NavigatorSections.Windows];
+            foldout.Clear();
+            int shown = 0;
+            foreach (var window in NavigatorTools.OpenWindows())
+            {
+                var row = MakeWindowRow(window);
+                if (!PassesFilter(row)) continue;
+                foldout.Add(MakeRow(row));
+                shown++;
+            }
+            if (shown == 0) foldout.Add(MakeEmpty("No open windows."));
+
+            var recent = NavigatorTools.RecentWindows(NavigatorGlobal.Data.recentWindowsCount, closedOnly: true)
+                .Select(MakeRecentWindowRow).Where(PassesFilter).ToList();
+            if (recent.Count > 0)
+            {
+                foldout.Add(MakeGroupHeader("Recently used", null));
+                foreach (var row in recent) foldout.Add(MakeRow(row));
+            }
+
+            foldout.text = $"Windows ({shown})";
+        }
+
+        static VisualElement MakeGroupHeader(string title, Color? swatchColor)
+        {
+            var header = new VisualElement();
+            header.AddToClassList("pn-tagheader");
+            header.style.flexDirection = FlexDirection.Row;
+            header.style.alignItems = Align.Center;
+            header.style.marginTop = 6;
+            header.style.marginBottom = 2;
+            if (swatchColor.HasValue)
+            {
+                var swatch = new VisualElement();
+                swatch.style.width = 10;
+                swatch.style.height = 10;
+                swatch.style.marginLeft = 4;
+                swatch.style.marginRight = 6;
+                swatch.style.backgroundColor = swatchColor.Value;
+                header.Add(swatch);
+            }
+            var label = new Label(title);
+            label.style.unityFontStyleAndWeight = FontStyle.Bold;
+            label.style.marginLeft = swatchColor.HasValue ? 0 : 6;
+            header.Add(label);
+            return header;
         }
     }
 }

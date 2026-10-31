@@ -29,7 +29,20 @@ namespace ProjectNavigator
         static void QuickJump() => NavigatorSearchProvider.ShowQuickJump();
 
         [Shortcut("Project Navigator/Popup at Cursor", KeyCode.Space, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
-        static void Popup() => NavigatorPopup.Toggle();
+        static void Popup() => NavigatorPopup.Toggle(NavigatorPopup.Mode.Navigator);
+
+        [Shortcut("Project Navigator/Window Switcher", KeyCode.W, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        static void WindowSwitcher() => NavigatorPopup.Toggle(NavigatorPopup.Mode.Windows);
+
+        [Shortcut("Project Navigator/Pin Focused Window", KeyCode.K, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        static void PinFocusedWindow()
+        {
+            var window = ToolTracker.LastForeignWindow;
+            if (window != null) NavigatorTools.PinWindowType(window.GetType(), false);
+        }
+
+        [Shortcut("Project Navigator/Pin a Tool...")]
+        static void PinTool() => ToolPickerWindow.Open();
 
         [Shortcut("Project Navigator/Pin Current Folder", KeyCode.P, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
         static void PinCurrent() => Navigator.PinCurrentFolder(false);

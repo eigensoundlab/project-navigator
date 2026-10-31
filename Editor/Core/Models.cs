@@ -76,3 +76,64 @@ namespace ProjectNavigator
         public bool Exists => !string.IsNullOrEmpty(path);
     }
 }
+
+namespace ProjectNavigator
+{
+    internal enum ToolPinKind
+    {
+        MenuItem = 0,
+        Window = 1
+    }
+
+    /// <summary>A pinned editor tool: a menu item (any Unity menu path) or an editor window type.</summary>
+    [Serializable]
+    internal sealed class ToolPin
+    {
+        public string id = Guid.NewGuid().ToString("N");
+        public ToolPinKind kind;
+        /// <summary>Menu path such as "Window/Rendering/Lighting" (menu-item pins).</summary>
+        public string menuPath = "";
+        /// <summary>Assembly-qualified type name of the EditorWindow (window pins).</summary>
+        public string windowType = "";
+        public string label = "";
+        public string group = "";
+        public bool hasColor;
+        public Color color = Color.white;
+    }
+
+    /// <summary>Label and color for an open editor window, by instance (type|title|ordinal) or by type.</summary>
+    [Serializable]
+    internal sealed class WindowMark
+    {
+        public string key = "";
+        public bool byType;
+        public string label = "";
+        public bool hasColor;
+        public Color color = Color.white;
+    }
+
+    [Serializable]
+    internal sealed class RecentWindow
+    {
+        public string windowType = "";
+        public string title = "";
+        public long lastFocusTicks;
+    }
+
+    internal enum SectionLayout
+    {
+        Stacked = 0,
+        Tabs = 1
+    }
+
+    /// <summary>Visibility of one Navigator section in each window kind and mode, plus its position in the order.</summary>
+    [Serializable]
+    internal sealed class SectionSetting
+    {
+        public string id = "";
+        public bool docked = true;
+        public bool dockedCompact;
+        public bool floating = true;
+        public bool floatingCompact;
+    }
+}

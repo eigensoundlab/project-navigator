@@ -31,6 +31,7 @@ namespace ProjectNavigator
 
         static bool s_UserDirty;
         static bool s_SharedDirty;
+        static bool s_GlobalDirty;
         static double s_NextSave;
 
         [InitializeOnLoadMethod]
@@ -638,16 +639,17 @@ namespace ProjectNavigator
         // ------------------------------------------------------------------ persistence
 
         /// <summary>Saves are batched: at most one disk write per scope every couple of seconds.</summary>
-        public static void MarkDirty(bool user = false, bool shared = false)
+        public static void MarkDirty(bool user = false, bool shared = false, bool global = false)
         {
             if (user) s_UserDirty = true;
             if (shared) s_SharedDirty = true;
+            if (global) s_GlobalDirty = true;
             s_NextSave = EditorApplication.timeSinceStartup + 2.0;
         }
 
         static void SaveTick()
         {
-            if (!s_UserDirty && !s_SharedDirty) return;
+            if (!s_UserDirty && !s_SharedDirty && !s_GlobalDirty) return;
             if (EditorApplication.timeSinceStartup < s_NextSave) return;
             FlushSaves();
         }
@@ -663,6 +665,11 @@ namespace ProjectNavigator
             {
                 s_SharedDirty = false;
                 Shared.SaveNow();
+            }
+            if (s_GlobalDirty)
+            {
+                s_GlobalDirty = false;
+                NavigatorGlobal.Save();
             }
         }
     }
