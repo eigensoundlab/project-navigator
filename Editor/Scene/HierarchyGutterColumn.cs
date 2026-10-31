@@ -29,7 +29,6 @@ namespace ProjectNavigator
             desc.Tooltip = "Project Navigator: pinned objects, colors and notes";
             desc.DefaultPriority = -10;   // left of the Name column
             desc.DefaultWidth = 24;
-            desc.MinWidth = 16;
             desc.DefaultVisibility = true;
         }
 

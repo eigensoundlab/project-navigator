@@ -255,20 +255,11 @@ namespace ProjectNavigator
             if (string.IsNullOrEmpty(typeKey)) return null;
             var type = Type.GetType(typeKey);
             if (type != null) return type;
+            // The assembly name may have changed (package update, Unity upgrade): match by full name among window types.
             int comma = typeKey.IndexOf(',');
             var full = comma < 0 ? typeKey : typeKey.Substring(0, comma);
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    type = assembly.GetType(full);
-                    if (type != null) return type;
-                }
-                catch
-                {
-                    // dynamic or broken assemblies
-                }
-            }
+            foreach (var candidate in TypeCache.GetTypesDerivedFrom<EditorWindow>())
+                if (candidate.FullName == full) return candidate;
             return null;
         }
 

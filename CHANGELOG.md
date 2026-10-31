@@ -3,6 +3,11 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.1] - 2026-10-31
+### Fixed
+- Compile error on 6000.6: `HierarchyViewColumnDescriptor.MinWidth` does not exist there (removed).
+- Analyzer warning UAC0005: window types are now resolved through `TypeCache` instead of `AppDomain.GetAssemblies()`.
+
 ## [0.5.0] - 2026-10-31
 ### Added
 - Scene section: pin GameObjects (Hierarchy right-click → Project Navigator → Pin, or Alt+Shift+G),
